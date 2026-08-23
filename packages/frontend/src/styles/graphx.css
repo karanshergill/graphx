@@ -1,4 +1,5 @@
 .graphx-page {
+  --graphx-control-height: 2.5rem;
   --graphx-root-node: var(--p-primary-color);
   --graphx-observed-node: hsl(var(--c-info-400));
   --graphx-structural-node: var(--p-text-muted-color);
@@ -99,10 +100,8 @@
 }
 
 .graphx-search {
-  align-items: center;
-  display: flex;
+  display: block;
   flex: 1 1 15rem;
-  gap: 0.45rem;
   max-width: 26rem;
   position: relative;
 }
@@ -110,15 +109,23 @@
 .graphx-search > i {
   color: var(--p-text-muted-color);
   font-size: 0.75rem;
+  left: 0.7rem;
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
 }
 
 .graphx-search input {
   background: var(--p-surface-900);
   border: 1px solid var(--p-content-border-color);
   border-radius: 0.45rem;
+  box-sizing: border-box;
   color: var(--p-text-color);
   font-size: 0.85rem;
-  padding: 0.5rem 0.65rem;
+  height: var(--graphx-control-height);
+  padding: 0 5.5rem 0 2rem;
   width: 100%;
 }
 
@@ -134,7 +141,13 @@
 .graphx-search-count {
   color: var(--p-text-muted-color);
   font-size: 0.68rem;
+  pointer-events: none;
+  position: absolute;
+  right: 2rem;
+  top: 50%;
+  transform: translateY(-50%);
   white-space: nowrap;
+  z-index: 1;
 }
 
 .graphx-search-clear {
@@ -143,6 +156,11 @@
   color: var(--p-text-muted-color);
   cursor: pointer;
   padding: 0.2rem;
+  position: absolute;
+  right: 0.55rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
 }
 
 .graphx-search-clear:hover,
@@ -197,9 +215,21 @@
 }
 
 .graphx-scope-select {
+  height: var(--graphx-control-height);
   max-width: 24rem;
   min-width: 14rem;
   width: min(28vw, 24rem);
+}
+
+.graphx-scope-select .p-select-label {
+  align-items: center;
+  display: flex;
+  font-size: 0.85rem;
+}
+
+.graphx-controls .p-button {
+  font-size: 0.85rem;
+  height: var(--graphx-control-height);
 }
 
 .graphx-stats {

@@ -23,6 +23,9 @@ importers:
       eslint:
         specifier: 9.29.0
         version: 9.29.0(jiti@2.4.2)
+      eslint-scope:
+        specifier: 8.4.0
+        version: 8.4.0
       knip:
         specifier: 5.70.2
         version: 5.70.2(@types/node@26.1.2)(typescript@5.5.4)

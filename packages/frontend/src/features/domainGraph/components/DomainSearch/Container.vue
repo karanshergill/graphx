@@ -98,6 +98,7 @@ defineExpose({
         v-for="(hostname, index) in matches"
         :key="hostname"
         role="option"
+        :title="hostname"
         :aria-selected="index === highlighted"
         :class="{ 'graphx-search-active': index === highlighted }"
         @mousedown.prevent="pick(hostname)"
