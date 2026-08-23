@@ -2,6 +2,19 @@
 
 GraphX is a native Caido extension for exploring relationships in project data. It renders an interactive, full-page graph of every observed Sitemap domain that matches a selected Caido scope, with persistent domain marks, connection-path highlighting, and per-host JavaScript asset association.
 
+![GraphX domain graph](docs/assets/screenshot.png)
+
+## Features at a glance
+
+- **Scope-wide domain graph** — every Sitemap domain in scope, laid out force-directed, with structural parent chains (`example.com` → `api.example.com`).
+- **Persistent marks** — flag interesting domains (with or without their subdomain subtrees); marks survive restarts per project.
+- **Connection paths** — highlight the full path between marked domains to see how surface connects.
+- **JS asset awareness** — per-host bundle and source-map inventory from observed traffic, with first/last-seen timestamps.
+- **API map drill-down** — a Swagger-like route map per host, built sitemap-first from your own traffic.
+- **Search and keyboard-first navigation** — `/` or `Ctrl/Cmd+K` to jump to any domain.
+- **Agent API** — read-only JSON on `127.0.0.1:8771` so automation can query the same estate model.
+- **Passive** — GraphX never sends traffic to targets; it reads Caido's local data only.
+
 ## Current behavior
 
 - Reads domain roots from Caido's local Sitemap API for the selected scope.
