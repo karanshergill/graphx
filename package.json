@@ -1,0 +1,34 @@
+{
+  "name": "graphx",
+  "version": "0.1.0",
+  "private": true,
+  "browserslist": [
+    "last 2 Chrome versions",
+    "last 2 Edge versions",
+    "last 2 Firefox versions",
+    "last 2 Safari versions"
+  ],
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint ./packages/**/src --max-warnings 0",
+    "lint:fix": "eslint ./packages/**/src --fix --max-warnings 0",
+    "knip": "knip",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "caido-dev build",
+    "watch": "caido-dev watch"
+  },
+  "devDependencies": {
+    "@caido-community/dev": "0.1.7",
+    "@caido/eslint-config": "0.10.0",
+    "@caido/tailwindcss": "0.1.0",
+    "@vitejs/plugin-vue": "5.2.1",
+    "eslint": "9.29.0",
+    "postcss-prefixwrap": "1.51.0",
+    "tailwindcss": "3.4.13",
+    "tailwindcss-primeui": "0.3.4",
+    "typescript": "5.5.4",
+    "knip": "5.70.2",
+    "vitest": "4.1.2"
+  }
+}

@@ -1,0 +1,614 @@
+.graphx-page {
+  --graphx-root-node: var(--p-primary-color);
+  --graphx-observed-node: hsl(var(--c-info-400));
+  --graphx-structural-node: var(--p-text-muted-color);
+  --graphx-edge: var(--p-content-border-color);
+  --graphx-selected-node: var(--p-text-color);
+  --graphx-neighbor-node: hsl(var(--c-secondary-300));
+  --graphx-on-neighbor-node: hsl(var(--c-surface-900));
+  --graphx-marked-node: hsl(var(--c-success-400));
+  --graphx-path-edge: hsl(var(--c-info-300));
+  --graphx-danger-node: hsl(var(--c-danger-400));
+  --graphx-muted-node: var(--p-surface-600);
+  --graphx-muted-edge: var(--p-surface-800);
+  background: var(--p-surface-900);
+  color: var(--p-text-color);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+}
+
+:root:not([data-mode="dark"]) .graphx-page {
+  --graphx-observed-node: hsl(var(--c-info-500));
+  --graphx-neighbor-node: hsl(var(--c-secondary-500));
+  --graphx-muted-node: var(--p-surface-300);
+  --graphx-muted-edge: var(--p-surface-200);
+  background: var(--p-surface-50);
+}
+
+.graphx-toolbar {
+  align-items: center;
+  background: var(--p-surface-800);
+  border-bottom: 1px solid var(--p-content-border-color);
+  display: grid;
+  flex: 0 0 auto;
+  gap: 1rem;
+  grid-template-columns: minmax(12rem, auto) minmax(20rem, 1fr) auto;
+  min-height: 4.5rem;
+  padding: 0.75rem 1rem;
+}
+
+:root:not([data-mode="dark"]) .graphx-toolbar {
+  background: var(--p-surface-0);
+}
+
+.graphx-identity,
+.graphx-controls,
+.graphx-stats,
+.graphx-stats div,
+.graphx-legend,
+.graphx-legend span {
+  align-items: center;
+  display: flex;
+}
+
+.graphx-identity {
+  gap: 0.75rem;
+}
+
+.graphx-logo {
+  align-items: center;
+  background: color-mix(in srgb, var(--graphx-root-node), transparent 82%);
+  border: 1px solid color-mix(in srgb, var(--graphx-root-node), transparent 45%);
+  border-radius: 0.6rem;
+  color: var(--graphx-root-node);
+  display: inline-flex;
+  height: 2.5rem;
+  justify-content: center;
+  width: 2.5rem;
+}
+
+.graphx-identity h1,
+.graphx-identity p,
+.graphx-stats dt,
+.graphx-stats dd {
+  margin: 0;
+}
+
+.graphx-identity h1 {
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.graphx-identity p,
+.graphx-controls label,
+.graphx-stats dt,
+.graphx-selection span,
+.graphx-selection small {
+  color: var(--p-text-muted-color);
+  font-size: 0.72rem;
+}
+
+.graphx-controls {
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: center;
+}
+
+.graphx-search {
+  align-items: center;
+  display: flex;
+  flex: 1 1 15rem;
+  gap: 0.45rem;
+  max-width: 26rem;
+  position: relative;
+}
+
+.graphx-search > i {
+  color: var(--p-text-muted-color);
+  font-size: 0.75rem;
+}
+
+.graphx-search input {
+  background: var(--p-surface-900);
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 0.45rem;
+  color: var(--p-text-color);
+  font-size: 0.85rem;
+  padding: 0.5rem 0.65rem;
+  width: 100%;
+}
+
+:root:not([data-mode="dark"]) .graphx-search input {
+  background: var(--p-surface-0);
+}
+
+.graphx-search input:focus {
+  border-color: var(--graphx-root-node);
+  outline: none;
+}
+
+.graphx-search-count {
+  color: var(--p-text-muted-color);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.graphx-search-clear {
+  background: transparent;
+  border: none;
+  color: var(--p-text-muted-color);
+  cursor: pointer;
+  padding: 0.2rem;
+}
+
+.graphx-search-clear:hover,
+.graphx-search-clear:focus-visible {
+  color: var(--p-text-color);
+  outline: none;
+}
+
+.graphx-search-results {
+  background: var(--p-surface-800);
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+  display: flex;
+  flex-direction: column;
+  left: 0;
+  list-style: none;
+  margin: 0;
+  max-height: 16rem;
+  max-width: min(40rem, 85vw);
+  min-width: 100%;
+  overflow-y: auto;
+  padding: 0.25rem;
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  width: max-content;
+  z-index: 50;
+}
+
+:root:not([data-mode="dark"]) .graphx-search-results {
+  background: var(--p-surface-0);
+}
+
+.graphx-search-results li {
+  border-radius: 0.35rem;
+  color: var(--p-text-color);
+  cursor: pointer;
+  font-size: 0.78rem;
+  overflow: hidden;
+  padding: 0.4rem 0.55rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphx-search-results li:hover,
+.graphx-search-results li.graphx-search-active {
+  background: var(--p-content-hover-background);
+}
+
+.graphx-controls label {
+  white-space: nowrap;
+}
+
+.graphx-scope-select {
+  max-width: 24rem;
+  min-width: 14rem;
+  width: min(28vw, 24rem);
+}
+
+.graphx-stats {
+  gap: 1rem;
+  justify-content: flex-end;
+}
+
+.graphx-stats div {
+  align-items: flex-end;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.graphx-stats dd {
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.graphx-workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.graphx-canvas {
+  height: 100%;
+  outline: none;
+  position: relative;
+  width: 100%;
+}
+
+.graphx-canvas:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--graphx-root-node);
+}
+
+.graphx-state {
+  align-items: center;
+  color: var(--p-text-muted-color);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  inset: 0;
+  justify-content: center;
+  position: absolute;
+}
+
+.graphx-state i {
+  color: var(--graphx-root-node);
+  font-size: 1.4rem;
+}
+
+.graphx-state-error,
+.graphx-state-error i {
+  color: hsl(var(--c-danger-400));
+}
+
+.graphx-selection,
+.graphx-legend {
+  backdrop-filter: blur(12px);
+  background: color-mix(in srgb, var(--p-surface-900), transparent 16%);
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 0.6rem;
+  bottom: 1rem;
+  position: absolute;
+}
+
+.graphx-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  left: 1rem;
+  max-width: min(32rem, calc(100% - 2rem));
+  padding: 0.65rem 0.8rem;
+}
+
+.graphx-selection strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphx-legend {
+  gap: 0.8rem;
+  padding: 0.45rem 0.65rem;
+  right: 1rem;
+}
+
+.graphx-legend span {
+  color: var(--p-text-muted-color);
+  font-size: 0.7rem;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+
+.graphx-dot {
+  background: currentColor;
+  border-radius: 50%;
+  display: inline-block;
+  height: 0.55rem;
+  width: 0.55rem;
+}
+
+.graphx-dot-root {
+  color: var(--graphx-root-node);
+}
+
+.graphx-dot-observed {
+  color: var(--graphx-observed-node);
+}
+
+.graphx-dot-structural {
+  color: var(--graphx-structural-node);
+}
+
+.graphx-dot-marked {
+  color: var(--graphx-marked-node);
+}
+
+.graphx-dot-neighbor {
+  color: var(--graphx-neighbor-node);
+}
+
+.graphx-dot-danger {
+  color: var(--graphx-danger-node);
+}
+
+.graphx-dot-path {
+  color: var(--graphx-path-edge);
+}
+
+.graphx-drill {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  position: relative;
+  width: 100%;
+}
+
+.graphx-breadcrumb {
+  align-items: center;
+  border-bottom: 1px solid var(--p-content-border-color);
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+}
+
+.graphx-breadcrumb button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 0.4rem;
+  color: var(--p-text-color);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.78rem;
+  gap: 0.45rem;
+  padding: 0.3rem 0.65rem;
+}
+
+.graphx-breadcrumb button:hover,
+.graphx-breadcrumb button:focus-visible {
+  background: var(--p-content-hover-background);
+  outline: none;
+}
+
+.graphx-breadcrumb strong {
+  font-size: 0.9rem;
+}
+
+.graphx-breadcrumb-meta {
+  color: var(--p-text-muted-color);
+  font-size: 0.72rem;
+}
+
+.graphx-drill-canvas {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+
+.graphx-apimap-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 0.4rem;
+  color: var(--p-text-color);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.74rem;
+  gap: 0.5rem;
+  margin-top: 0.45rem;
+  padding: 0.35rem 0.6rem;
+}
+
+.graphx-apimap-button:hover,
+.graphx-apimap-button:focus-visible {
+  background: var(--p-content-hover-background);
+  outline: none;
+}
+
+.graphx-apimap-button kbd {
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 0.25rem;
+  color: var(--p-text-muted-color);
+  font-size: 0.62rem;
+  padding: 0.05rem 0.3rem;
+}
+
+.graphx-route-details button {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 0.35rem;
+  color: var(--p-text-color);
+  cursor: pointer;
+  font-size: 0.68rem;
+  margin-top: 0.3rem;
+  padding: 0.15rem 0.5rem;
+}
+
+.graphx-route-details button:hover,
+.graphx-route-details button:focus-visible {
+  background: var(--p-content-hover-background);
+  outline: none;
+}
+
+.graphx-line-path {
+  background: var(--graphx-path-edge);
+  border-radius: 1px;
+  display: inline-block;
+  height: 2px;
+  width: 1rem;
+}
+
+.graphx-context-menu {
+  background: var(--p-surface-800);
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 14rem;
+  padding: 0.35rem;
+  position: fixed;
+  z-index: 50;
+}
+
+:root:not([data-mode="dark"]) .graphx-context-menu {
+  background: var(--p-surface-0);
+}
+
+.graphx-context-menu-title {
+  color: var(--p-text-muted-color);
+  font-size: 0.7rem;
+  margin: 0;
+  overflow: hidden;
+  padding: 0.3rem 0.55rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphx-context-menu button {
+  align-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 0.35rem;
+  color: var(--p-text-color);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.8rem;
+  gap: 0.55rem;
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+}
+
+.graphx-context-menu button:hover,
+.graphx-context-menu button:focus-visible {
+  background: var(--p-content-hover-background);
+  outline: none;
+}
+
+.graphx-context-menu button i {
+  color: var(--p-text-muted-color);
+  width: 1rem;
+}
+
+.graphx-assets {
+  border-top: 1px solid var(--p-content-border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+}
+
+.graphx-assets-header {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.graphx-assets-header span {
+  color: var(--p-text-muted-color);
+  font-size: 0.7rem;
+}
+
+.graphx-assets-header button {
+  background: transparent;
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 0.35rem;
+  color: var(--p-text-color);
+  cursor: pointer;
+  font-size: 0.68rem;
+  padding: 0.15rem 0.5rem;
+}
+
+.graphx-assets-header button:hover,
+.graphx-assets-header button:focus-visible {
+  background: var(--p-content-hover-background);
+  outline: none;
+}
+
+.graphx-assets ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  list-style: none;
+  margin: 0;
+  max-height: 12rem;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.graphx-assets li {
+  align-items: baseline;
+  display: flex;
+  font-size: 0.72rem;
+  gap: 0.45rem;
+}
+
+.graphx-assets li code {
+  color: var(--p-text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphx-asset-meta {
+  color: var(--p-text-muted-color);
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
+.graphx-asset-map {
+  background: color-mix(in srgb, var(--graphx-marked-node), transparent 80%);
+  border-radius: 0.3rem;
+  color: var(--graphx-marked-node);
+  flex: 0 0 auto;
+  font-size: 0.62rem;
+  padding: 0.05rem 0.35rem;
+}
+
+.graphx-assets-more {
+  color: var(--p-text-muted-color);
+  font-size: 0.68rem;
+  margin: 0;
+}
+
+.graphx-sr-only {
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .graphx-toolbar {
+    grid-template-columns: 1fr auto;
+  }
+
+  .graphx-controls {
+    flex-wrap: wrap;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: flex-start;
+  }
+
+  .graphx-scope-select {
+    max-width: none;
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .graphx-page *,
+  .graphx-page *::before,
+  .graphx-page *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["@caido/sdk-shared"]
+  },
+  "include": ["./src/**/*.ts"]
+}

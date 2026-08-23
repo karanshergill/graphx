@@ -1,0 +1,1 @@
+export { rankDomainMatches } from "./domainSearch";
