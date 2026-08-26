@@ -1,5 +1,12 @@
 .graphx-page {
+  /* Shared toolbar-control chrome. Every text-like control (search input,
+     scope select) reads from these tokens so they cannot drift apart. */
   --graphx-control-height: 2.5rem;
+  --graphx-control-radius: var(--p-content-border-radius);
+  --graphx-control-bg: var(--p-surface-950);
+  --graphx-control-border: var(--p-surface-600);
+  --graphx-control-hover-border: var(--p-surface-500);
+  --graphx-control-focus-border: var(--p-primary-color);
   --graphx-root-node: var(--p-primary-color);
   --graphx-observed-node: hsl(var(--c-info-400));
   --graphx-structural-node: var(--p-text-muted-color);
@@ -22,6 +29,9 @@
 }
 
 :root:not([data-mode="dark"]) .graphx-page {
+  --graphx-control-bg: var(--p-surface-0);
+  --graphx-control-border: var(--p-surface-300);
+  --graphx-control-hover-border: var(--p-surface-400);
   --graphx-observed-node: hsl(var(--c-info-500));
   --graphx-neighbor-node: hsl(var(--c-secondary-500));
   --graphx-muted-node: var(--p-surface-300);
@@ -118,9 +128,9 @@
 }
 
 .graphx-search input {
-  background: var(--p-surface-900);
-  border: 1px solid var(--p-content-border-color);
-  border-radius: 0.45rem;
+  background: var(--graphx-control-bg);
+  border: 1px solid var(--graphx-control-border);
+  border-radius: var(--graphx-control-radius);
   box-sizing: border-box;
   color: var(--p-text-color);
   font-size: 0.85rem;
@@ -129,12 +139,12 @@
   width: 100%;
 }
 
-:root:not([data-mode="dark"]) .graphx-search input {
-  background: var(--p-surface-0);
+.graphx-search input:hover {
+  border-color: var(--graphx-control-hover-border);
 }
 
 .graphx-search input:focus {
-  border-color: var(--graphx-root-node);
+  border-color: var(--graphx-control-focus-border);
   outline: none;
 }
 
@@ -215,10 +225,25 @@
 }
 
 .graphx-scope-select {
+  flex: 1 1 15rem;
   height: var(--graphx-control-height);
-  max-width: 24rem;
-  min-width: 14rem;
-  width: min(28vw, 24rem);
+  max-width: 26rem;
+}
+
+/* Pin the select's chrome to the shared control tokens. The nested selector
+   keeps precedence over any unscoped utility styles the host app provides. */
+.graphx-controls .graphx-scope-select {
+  background: var(--graphx-control-bg);
+  border: 1px solid var(--graphx-control-border);
+  border-radius: var(--graphx-control-radius);
+}
+
+.graphx-controls .graphx-scope-select:not(.p-disabled):hover {
+  border-color: var(--graphx-control-hover-border);
+}
+
+.graphx-controls .graphx-scope-select.p-focus {
+  border-color: var(--graphx-control-focus-border);
 }
 
 .graphx-scope-select .p-select-label {
@@ -626,11 +651,6 @@
     grid-column: 1 / -1;
     grid-row: 2;
     justify-content: flex-start;
-  }
-
-  .graphx-scope-select {
-    max-width: none;
-    width: 100%;
   }
 }
 
