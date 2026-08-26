@@ -21,7 +21,7 @@ type GraphqlData<T> = {
   errors?: { message: string }[];
 };
 
-const execute = async <T>(
+export const execute = async <T>(
   sdk: BackendSDK,
   query: string,
   variables?: Record<string, unknown>,

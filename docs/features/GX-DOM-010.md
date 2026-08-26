@@ -18,11 +18,16 @@ sees it in the domain selection panel.
   (`extractJsRecon`, `mergeJsRecon`). Regex-based, not AST parsing: endpoints
   built by string concatenation are missed, and string literals that merely
   look like paths can be false positives. Documented trade-off.
-- The backend sweep (`services/jsRecon.ts`) pages `sdk.requests` for the host
-  (case-insensitive host match including explicit ports, `%.js`/`%.mjs`,
-  status < 400, newest first), dedupes by path, decodes bodies (Blob via
-  `text()`, byte views via Buffer), and merges per-bundle extractions.
-- Budgets: 100 bundles, 2 MB per body, 8 MB total per sweep; any breach sets
+- The backend sweep (`services/jsRecon.ts`) pages the GraphQL `requests`
+  connection (scope-pinned, case-insensitive host match including explicit
+  ports, `%.js`/`%.mjs`, status < 400, newest first), dedupes by path, and
+  fetches each bundle's body via `request(id) → response.raw` (base64 raw
+  HTTP; body starts after the first CRLFCRLF). It merges per-bundle
+  extractions with `mergeJsRecon`. Note: the plugin SDK's
+  `sdk.requests.query()` helper returned zero items for filters that match
+  via GraphQL — the sweep deliberately uses `sdk.graphql.execute` instead
+  (same pattern as `agentapi/query.ts`).
+- Budgets: 100 bundles, 8 MB per body, 32 MB total per sweep; any breach sets
   `truncated: true`. The sweep never sends traffic to targets.
 - Findings persist per project+host in SQLite (`js_recon` table), same
   pattern as domain marks.
@@ -57,7 +62,7 @@ sees it in the domain selection panel.
 | ID | Requirement | Implementation | Acceptance evidence |
 | --- | --- | --- | --- |
 | R1 | Pure, tested extraction | `shared/src/jsRecon.ts` | `jsRecon.test.ts` (13 tests) |
-| R2 | Passive body sweep with budgets | `services/jsRecon.ts` | typecheck; live sweep pending |
-| R3 | Per-project persistence | `repositories/jsRecon.ts` | typecheck |
-| R4 | Agent route | `GET /js-recon` in `agentapi/routes.ts` | typecheck; live call pending |
+| R2 | Passive body sweep with budgets | `services/jsRecon.ts` | live: mclass.amplify.com, 68 bundles, 200 endpoints (2026-08-26) |
+| R3 | Per-project persistence | `repositories/jsRecon.ts` | live: row in plugin `data.db` `js_recon` (2026-08-26) |
+| R4 | Agent route | `GET /js-recon` in `agentapi/routes.ts` | live: `curl :8771/js-recon?host=mclass.amplify.com&scope=1` → 200 (2026-08-26) |
 | R5 | UI panel | `DomainGraphPage/Container.vue` | vue-tsc; build |

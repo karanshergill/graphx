@@ -1,6 +1,5 @@
 import { Buffer } from "buffer";
 
-import type { Cursor } from "caido:utils";
 import {
   err,
   extractJsRecon,
@@ -12,34 +11,38 @@ import {
   type Result,
 } from "shared";
 
-import { resolveScope } from "../agentapi/query";
+import { execute, resolveScope } from "../agentapi/query";
 import type { JsReconRepository } from "../repositories";
 import type { BackendSDK } from "../types";
 
 const PAGE_SIZE = 200;
 const MAX_BUNDLES = 100;
-const MAX_BODY_LENGTH = 2_000_000;
-const MAX_TOTAL_LENGTH = 8_000_000;
+const MAX_BODY_LENGTH = 8_000_000;
+const MAX_TOTAL_LENGTH = 32_000_000;
 
-const bodyToText = async (body: unknown): Promise<string | undefined> => {
-  if (body === null || body === undefined) return undefined;
-  const textMethod = (body as { text?: unknown }).text;
-  if (typeof textMethod === "function") {
-    return (textMethod as () => Promise<string>).call(body);
-  }
-  const view = body as {
-    buffer?: ArrayBufferLike;
-    byteOffset?: number;
-    byteLength?: number;
+type JsRequestPage = {
+  requests: {
+    edges: { cursor: string; node: { id: string; path: string } }[];
+    pageInfo: { endCursor?: string; hasNextPage: boolean };
   };
-  if (view.buffer !== undefined && view.byteLength !== undefined) {
-    return Buffer.from(
-      view.buffer,
-      view.byteOffset ?? 0,
-      view.byteLength,
-    ).toString("utf-8");
-  }
-  return undefined;
+};
+
+type JsRequestBody = {
+  request?: { response?: { raw?: string } };
+};
+
+// LIKE without wildcards is ASCII case-insensitive; the second clause also
+// matches Host headers carrying an explicit port.
+const buildFilter = (host: string): string =>
+  `(req.host.like:"${host}" or req.host.like:"${host}:%") ` +
+  'and (req.path.like:"%.js" or req.path.like:"%.mjs") and resp.code.lt:400';
+
+// `raw` is the base64-encoded raw HTTP response (status line, headers, body).
+const decodeBody = (raw: string): string | undefined => {
+  const text = Buffer.from(raw, "base64").toString("utf-8");
+  const separator = text.indexOf("\r\n\r\n");
+  if (separator === -1) return undefined;
+  return text.slice(separator + 4);
 };
 
 const buildHostJsRecon = async (
@@ -50,29 +53,27 @@ const buildHostJsRecon = async (
   const normalized = normalizeHostname(host);
   if (normalized === undefined) throw new Error(`Invalid host "${host}".`);
 
-  // LIKE without wildcards is ASCII case-insensitive; the second clause also
-  // matches Host headers carrying an explicit port.
-  const filter =
-    `(req.host.like:"${normalized}" or req.host.like:"${normalized}:%") ` +
-    'and (req.path.like:"%.js" or req.path.like:"%.mjs") and resp.code.lt:400';
-
   const seenPaths = new Set<string>();
   const extractions: JsReconExtraction[] = [];
   let totalLength = 0;
   let truncated = false;
-  let cursor: Cursor | undefined;
+  let after: string | undefined;
 
   for (;;) {
-    let query = sdk.requests
-      .query()
-      .filter(filter)
-      .first(PAGE_SIZE)
-      .descending("req", "created_at");
-    if (cursor !== undefined) query = query.after(cursor);
-    const page = await query.execute();
+    const data = await execute<JsRequestPage>(
+      sdk,
+      "query($scopeId: ID, $filter: HTTPQLInput, $first: Int, $after: String, $order: RequestResponseOrderInput) { requests(scopeId: $scopeId, filter: $filter, first: $first, after: $after, order: $order) { edges { cursor node { id path } } pageInfo { endCursor hasNextPage } } }",
+      {
+        scopeId,
+        filter: { code: buildFilter(normalized) },
+        first: PAGE_SIZE,
+        order: { by: "CREATED_AT", ordering: "DESC" },
+        ...(after === undefined ? {} : { after }),
+      },
+    );
 
-    for (const item of page.items) {
-      const path = item.request.getPath();
+    for (const edge of data.requests.edges) {
+      const { id, path } = edge.node;
       if (seenPaths.has(path)) continue;
       seenPaths.add(path);
       if (
@@ -80,9 +81,16 @@ const buildHostJsRecon = async (
         totalLength >= MAX_TOTAL_LENGTH
       ) {
         truncated = true;
-        continue;
+        break;
       }
-      const text = await bodyToText(item.response?.getBody());
+      const bodyData = await execute<JsRequestBody>(
+        sdk,
+        "query($id: ID!) { request(id: $id) { response { raw } } }",
+        { id },
+      );
+      const raw = bodyData.request?.response?.raw;
+      if (typeof raw !== "string") continue;
+      const text = decodeBody(raw);
       if (text === undefined) continue;
       if (text.length > MAX_BODY_LENGTH) {
         truncated = true;
@@ -91,16 +99,18 @@ const buildHostJsRecon = async (
       totalLength += text.length;
       extractions.push(extractJsRecon(text));
     }
+    if (truncated) break;
 
-    if (page.pageInfo.hasNextPage !== true || truncated) break;
-    if (page.pageInfo.endCursor === cursor) {
+    const { endCursor, hasNextPage } = data.requests.pageInfo;
+    if (!hasNextPage || endCursor === undefined) break;
+    if (endCursor === after) {
       sdk.console.warn(
         "GraphX JS recon sweep stopped: pagination cursor did not advance; results are truncated.",
       );
       truncated = true;
       break;
     }
-    cursor = page.pageInfo.endCursor;
+    after = endCursor;
   }
 
   return {
