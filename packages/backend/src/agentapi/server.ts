@@ -72,6 +72,10 @@ export const startAgentApiServer = (
         }
         const headerEnd = findHeaderEnd(raw);
         if (headerEnd < 0) return;
+        // A complete request arrived: the connection is not abandoned, the
+        // handler is just working. Stop the idle timer so long-running
+        // sweeps are not killed mid-flight.
+        stopIdleTimer();
         const requestLine = raw
           .subarray(0, headerEnd)
           .toString("utf-8")
@@ -106,6 +110,7 @@ export const startAgentApiServer = (
     // This runtime has no socket-level timeout; enforce an idle timeout
     // manually so abandoned connections cannot accumulate.
     let idleTimer = setTimeout(() => socket.destroy(), SOCKET_IDLE_TIMEOUT_MS);
+    const stopIdleTimer = (): void => clearTimeout(idleTimer);
     const resetIdleTimer = (): void => {
       clearTimeout(idleTimer);
       idleTimer = setTimeout(() => socket.destroy(), SOCKET_IDLE_TIMEOUT_MS);
