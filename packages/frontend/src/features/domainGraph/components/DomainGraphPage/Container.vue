@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import Button from "primevue/button";
 import Select from "primevue/select";
-import type { ApiRoute } from "shared";
+import type { ApiRoute, JsReconFindings } from "shared";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { RouteTreeCanvas, useApiMap } from "../../../routeTree";
@@ -246,6 +246,7 @@ const drillOut = (): void => {
 // A project or scope switch invalidates the cached maps; leave the drill-down
 // so the old context's routes are never shown as if they were current.
 watch([() => project.value?.id, selectedScopeId], () => {
+  jsReconByHost.value = new Map();
   if (drillHost.value !== undefined) drillOut();
 });
 
@@ -263,6 +264,54 @@ const copyRouteTemplate = (): void => {
   if (endpoint === undefined || host === undefined) return;
   void navigator.clipboard.writeText(`https://${host}${endpoint.template}`);
   sdk.window.showToast("Route URL copied", { variant: "success" });
+};
+
+const jsReconByHost = ref(new Map<string, JsReconFindings>());
+const jsReconLoading = ref(false);
+const selectedJsRecon = computed(() => {
+  const hostname = selectedHostname.value;
+  return hostname === undefined ? undefined : jsReconByHost.value.get(hostname);
+});
+
+const scanJsRecon = async (): Promise<void> => {
+  const hostname = selectedHostname.value;
+  if (hostname === undefined || jsReconLoading.value) return;
+  jsReconLoading.value = true;
+  try {
+    const result = await sdk.backend.getJsRecon(
+      hostname,
+      selectedScopeId.value,
+    );
+    if (result.kind === "Error") {
+      sdk.window.showToast(result.error, { variant: "error" });
+      return;
+    }
+    const next = new Map(jsReconByHost.value);
+    next.set(hostname, result.value);
+    jsReconByHost.value = next;
+  } catch (cause: unknown) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    sdk.window.showToast(`JS recon failed: ${message}`, { variant: "error" });
+  } finally {
+    jsReconLoading.value = false;
+  }
+};
+
+const copyReconEndpoints = (): void => {
+  const recon = selectedJsRecon.value;
+  const hostname = selectedHostname.value;
+  if (recon === undefined || hostname === undefined) return;
+  void navigator.clipboard.writeText(
+    recon.endpoints
+      .map((endpoint) =>
+        endpoint.startsWith("/") ? `https://${hostname}${endpoint}` : endpoint,
+      )
+      .join("\n"),
+  );
+  sdk.window.showToast(
+    `Copied ${recon.endpoints.length} endpoint${recon.endpoints.length === 1 ? "" : "s"}`,
+    { variant: "success" },
+  );
 };
 </script>
 
@@ -477,6 +526,78 @@ const copyRouteTemplate = (): void => {
             >
               + {{ selectedHostAssets.bundleCount - 50 }} more
             </p>
+          </div>
+          <div class="graphx-assets graphx-recon">
+            <div class="graphx-assets-header">
+              <span
+                >JS recon<template v-if="selectedJsRecon">
+                  · {{ selectedJsRecon.bundlesScanned }} bundles ·
+                  {{ selectedJsRecon.endpoints.length }} endpoints</template
+                ></span
+              >
+              <button
+                type="button"
+                :disabled="jsReconLoading"
+                @click="scanJsRecon"
+              >
+                {{
+                  jsReconLoading
+                    ? "Scanning…"
+                    : selectedJsRecon
+                      ? "Rescan"
+                      : "Scan JS"
+                }}
+              </button>
+            </div>
+            <template v-if="selectedJsRecon">
+              <p v-if="selectedJsRecon.truncated" class="graphx-assets-more">
+                Recon sweep truncated — data may be incomplete.
+              </p>
+              <ul v-if="selectedJsRecon.endpoints.length > 0">
+                <li
+                  v-for="endpoint in selectedJsRecon.endpoints.slice(0, 50)"
+                  :key="endpoint"
+                >
+                  <code>{{ endpoint }}</code>
+                </li>
+              </ul>
+              <p
+                v-if="selectedJsRecon.endpoints.length > 50"
+                class="graphx-assets-more"
+              >
+                + {{ selectedJsRecon.endpoints.length - 50 }} more
+              </p>
+              <small v-if="selectedJsRecon.graphqlOperations.length > 0">
+                GraphQL: {{ selectedJsRecon.graphqlOperations.join(", ") }}
+              </small>
+              <small v-if="selectedJsRecon.storageKeys.length > 0">
+                Storage: {{ selectedJsRecon.storageKeys.join(", ") }}
+              </small>
+              <small v-if="Object.keys(selectedJsRecon.sinks).length > 0">
+                Sinks:
+                {{
+                  Object.entries(selectedJsRecon.sinks)
+                    .map(([sink, count]) => `${sink}×${count}`)
+                    .join(" · ")
+                }}
+              </small>
+              <small
+                v-if="
+                  selectedJsRecon.postMessageHandlers > 0 ||
+                  selectedJsRecon.postMessageCalls > 0
+                "
+              >
+                postMessage: {{ selectedJsRecon.postMessageHandlers }} listeners
+                · {{ selectedJsRecon.postMessageCalls }} calls
+              </small>
+              <button
+                v-if="selectedJsRecon.endpoints.length > 0"
+                type="button"
+                @click="copyReconEndpoints"
+              >
+                Copy endpoints
+              </button>
+            </template>
           </div>
           <button
             type="button"

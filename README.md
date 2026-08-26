@@ -52,6 +52,7 @@ curl -s "127.0.0.1:8771/domains?scope=Example" # full domain graph JSON
 curl -s "127.0.0.1:8771/assets?scope=Example"  # per-host JS bundle/map groupings
 curl -s "127.0.0.1:8771/brief?scope=Example"   # composite estate brief (session start)
 curl -s "127.0.0.1:8771/api-map?host=api.example.com"  # per-host route map (Swagger-like templates)
+curl -s "127.0.0.1:8771/js-recon?host=app.example.com" # static recon over observed JS bodies (endpoints, GraphQL ops, storage keys, sinks)
 ```
 
 `?scope=` takes a scope id or name and may be omitted when only one scope exists. All routes are GET + JSON; errors are `{ "error": string }`. See `docs/features/GX-DOM-007.md`.

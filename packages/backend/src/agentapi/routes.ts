@@ -1,7 +1,7 @@
 import type { ApiMapResponse, ScopeDefinition } from "shared";
 import { normalizeHostname } from "shared";
 
-import type { DomainMarksService } from "../services";
+import type { DomainMarksService, JsReconService } from "../services";
 import type { BackendSDK } from "../types";
 
 import {
@@ -30,6 +30,7 @@ const errorMessage = (error: unknown): string =>
 export const createAgentRoutes = (
   sdk: BackendSDK,
   marksService: DomainMarksService,
+  jsReconService: JsReconService,
 ): AgentRoute[] => {
   const currentProject = async (): Promise<
     { id: string; name: string } | undefined
@@ -158,6 +159,27 @@ export const createAgentRoutes = (
             host,
             generatedAt: new Date().toISOString(),
             ...map,
+          });
+        }),
+    },
+    {
+      method: "GET",
+      path: "/js-recon",
+      handle: (query) =>
+        withScope(query, async (scope) => {
+          const host = query.get("host") ?? undefined;
+          if (host === undefined || host.trim().length === 0) {
+            return badRequest("Pass ?host=<hostname> to scan.");
+          }
+          if (normalizeHostname(host) === undefined) {
+            return badRequest(`Invalid host "${host}".`);
+          }
+          const result = await jsReconService.scan(host, scope.id);
+          if (result.kind === "Error") return badRequest(result.error);
+          return ok({
+            project: await currentProject(),
+            scope: { id: scope.id, name: scope.name },
+            ...result.value,
           });
         }),
     },

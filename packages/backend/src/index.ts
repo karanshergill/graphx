@@ -2,9 +2,21 @@ import type { SDK } from "caido:plugin";
 import type { Spec } from "shared";
 
 import { createAgentRoutes, startAgentApiServer } from "./agentapi";
-import { createDomainMarksApi, getApiMap, getProjectContext } from "./api";
-import { createDomainMarksRepository } from "./repositories";
-import { createDomainMarksService, toProjectContext } from "./services";
+import {
+  createDomainMarksApi,
+  createJsReconApi,
+  getApiMap,
+  getProjectContext,
+} from "./api";
+import {
+  createDomainMarksRepository,
+  createJsReconRepository,
+} from "./repositories";
+import {
+  createDomainMarksService,
+  createJsReconService,
+  toProjectContext,
+} from "./services";
 
 export const init = (sdk: SDK<Spec>): void => {
   sdk.api.register("getProjectContext", getProjectContext);
@@ -19,8 +31,15 @@ export const init = (sdk: SDK<Spec>): void => {
   sdk.api.register("addDomainMarks", marksApi.addDomainMarks);
   sdk.api.register("removeDomainMarks", marksApi.removeDomainMarks);
 
-  startAgentApiServer(createAgentRoutes(sdk, marksService), (message) =>
-    sdk.console.warn(message),
+  const jsReconService = createJsReconService(
+    sdk,
+    createJsReconRepository(sdk),
+  );
+  sdk.api.register("getJsRecon", createJsReconApi(jsReconService).getJsRecon);
+
+  startAgentApiServer(
+    createAgentRoutes(sdk, marksService, jsReconService),
+    (message) => sdk.console.warn(message),
   );
 
   sdk.events.onProjectChange((_eventSdk, project) => {

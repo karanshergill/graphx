@@ -6,6 +6,12 @@ import type { Events } from "./events";
 export * from "./domainGraph";
 export type { API, ApiMapResponse } from "./api";
 export type { Events } from "./events";
+export {
+  extractJsRecon,
+  mergeJsRecon,
+  type JsReconExtraction,
+  type JsReconFindings,
+} from "./jsRecon";
 export type { ProjectContext } from "./project";
 export { err, ok, type Result } from "./result";
 

@@ -630,6 +630,28 @@
   margin: 0;
 }
 
+.graphx-recon > button {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 0.35rem;
+  color: var(--p-text-color);
+  cursor: pointer;
+  font-size: 0.68rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.graphx-recon > button:hover,
+.graphx-recon > button:focus-visible {
+  background: var(--p-content-hover-background);
+  outline: none;
+}
+
+.graphx-recon button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .graphx-sr-only {
   height: 1px;
   margin: -1px;

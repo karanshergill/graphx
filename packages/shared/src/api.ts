@@ -1,4 +1,5 @@
 import type { ApiRoute } from "./domainGraph/apiMap";
+import type { JsReconFindings } from "./jsRecon";
 import type { ProjectContext } from "./project";
 import type { Result } from "./result";
 
@@ -19,4 +20,8 @@ export type API = {
     host: string,
     scopeId?: string,
   ) => Promise<Result<ApiMapResponse>>;
+  getJsRecon: (
+    host: string,
+    scopeId?: string,
+  ) => Promise<Result<JsReconFindings>>;
 };
