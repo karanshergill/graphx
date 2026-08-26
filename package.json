@@ -24,7 +24,6 @@
     "@caido/tailwindcss": "0.1.0",
     "@vitejs/plugin-vue": "5.2.1",
     "eslint": "9.29.0",
-    "eslint-scope": "8.4.0",
     "knip": "5.70.2",
     "postcss-prefixwrap": "1.51.0",
     "tailwindcss": "3.4.13",
