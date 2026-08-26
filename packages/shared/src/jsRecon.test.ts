@@ -8,14 +8,14 @@ describe("extractJsRecon", () => {
       fetch("/api/users");
       axios.get("/api/users");
       const health = '/api/health';
-      const cdn = "https://cdn.example.com/lib.js";
+      const cdn = "https://cdn.example.com/lib/main";
       fetch("/api/users");
     `;
     const result = extractJsRecon(source);
     expect(result.endpoints).toEqual([
       "/api/health",
       "/api/users",
-      "https://cdn.example.com/lib.js",
+      "https://cdn.example.com/lib/main",
     ]);
   });
 
@@ -85,6 +85,44 @@ describe("extractJsRecon", () => {
     ).join("\n");
     expect(extractJsRecon(source).endpoints).toHaveLength(200);
   });
+
+  it("drops static assets and bundler dev-server internals", () => {
+    const source = `
+      import "/assets/app-B7x2.js";
+      const css = "/styles/main.css";
+      const font = "/fonts/inter.woff2";
+      const img = "https://cdn.example.com/logo.svg";
+      const chunk = "/node_modules/.vite/deps/chunk-B7x2.js";
+      const vite = "/@vite/client";
+      const refresh = "/@react-refresh";
+      fetch("/api/users");
+      fetch("/config.json");
+    `;
+    expect(extractJsRecon(source).endpoints).toEqual([
+      "/api/users",
+      "/config.json",
+    ]);
+  });
+
+  it("drops namespace and telemetry hosts, keeps localhost and API URLs", () => {
+    const source = `
+      const svgNs = "https://www.w3.org/2000/svg";
+      const soap = "https://schemas.xmlsoap.org/soap/envelope/";
+      const ga = "https://www.google-analytics.com/collect";
+      const sentry = "https://o123.ingest.sentry.io/api/456/";
+      fetch("https://api.example.com/v1/users");
+      fetch("http://localhost:3000/api/debug");
+    `;
+    expect(extractJsRecon(source).endpoints).toEqual([
+      "http://localhost:3000/api/debug",
+      "https://api.example.com/v1/users",
+    ]);
+  });
+
+  it("drops asset URLs even when they carry a query string", () => {
+    const source = `const lib = "https://cdn.example.com/lib.js?v=1.2.3";`;
+    expect(extractJsRecon(source).endpoints).toEqual([]);
+  });
 });
 
 describe("mergeJsRecon", () => {
@@ -106,5 +144,17 @@ describe("mergeJsRecon", () => {
     const both = extractJsRecon('fetch("/api/shared");');
     const merged = mergeJsRecon([both, both]);
     expect(merged.endpoints).toEqual(["/api/shared"]);
+  });
+
+  it("drops noise endpoints from stored extractions on merge", () => {
+    const legacy = {
+      endpoints: ["/api/a", "/assets/logo.png", "https://www.w3.org/2000/svg"],
+      graphqlOperations: [],
+      storageKeys: [],
+      postMessageHandlers: 0,
+      postMessageCalls: 0,
+      sinks: {},
+    };
+    expect(mergeJsRecon([legacy]).endpoints).toEqual(["/api/a"]);
   });
 });

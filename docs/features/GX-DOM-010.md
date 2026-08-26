@@ -28,6 +28,16 @@ sees it in the domain selection panel.
   pattern as domain marks.
 - Result caps: 200 endpoints, 100 GraphQL operations, 100 storage keys per
   merged finding.
+- Endpoint noise is dropped at extraction and again at merge: static asset
+  extensions (`.js`, `.css`, fonts, images, media, archives, `.map`, `.wasm`
+  — query strings tolerated), bundler dev-server internals (`/node_modules/`,
+  `/@vite/`, `/@fs/`, `/@react-refresh`), and namespace/telemetry hosts
+  (`w3.org`, `schemas.xmlsoap.org`, `schema.org`, Google Analytics/Tag
+  Manager, `connect.facebook.net`, `bat.bing.com`, `*.ingest.sentry.io`).
+  Deliberately kept: `.json`/`.xml`/`.txt` paths, localhost URLs, and other
+  third-party URLs. Every read goes through a fresh sweep (`scan` →
+  `mergeJsRecon`), so unfiltered rows stored by older versions are replaced
+  on the next scan.
 
 ## Routes and API
 
@@ -46,7 +56,7 @@ sees it in the domain selection panel.
 
 | ID | Requirement | Implementation | Acceptance evidence |
 | --- | --- | --- | --- |
-| R1 | Pure, tested extraction | `shared/src/jsRecon.ts` | `jsRecon.test.ts` (9 tests) |
+| R1 | Pure, tested extraction | `shared/src/jsRecon.ts` | `jsRecon.test.ts` (13 tests) |
 | R2 | Passive body sweep with budgets | `services/jsRecon.ts` | typecheck; live sweep pending |
 | R3 | Per-project persistence | `repositories/jsRecon.ts` | typecheck |
 | R4 | Agent route | `GET /js-recon` in `agentapi/routes.ts` | typecheck; live call pending |

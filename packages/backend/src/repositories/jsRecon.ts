@@ -1,9 +1,8 @@
-import { type JsReconFindings, normalizeHostname } from "shared";
+import type { JsReconFindings } from "shared";
 
 import type { BackendSDK } from "../types";
 
 type Statement = {
-  all: <T extends object>(...params: string[]) => Promise<T[]>;
   run: (...params: string[]) => Promise<unknown>;
 };
 
@@ -14,10 +13,6 @@ type Database = {
 
 export type JsReconRepository = {
   save: (projectId: string, findings: JsReconFindings) => Promise<void>;
-  get: (
-    projectId: string,
-    hostname: string,
-  ) => Promise<JsReconFindings | undefined>;
 };
 
 export const createJsReconRepository = (sdk: BackendSDK): JsReconRepository => {
@@ -51,21 +46,6 @@ export const createJsReconRepository = (sdk: BackendSDK): JsReconRepository => {
         JSON.stringify(findings),
         new Date().toISOString(),
       );
-    },
-    get: async (projectId, hostname) => {
-      const normalized = normalizeHostname(hostname);
-      if (normalized === undefined) return undefined;
-      const handle = await db();
-      const statement = await handle.prepare(
-        "SELECT findings FROM js_recon WHERE project_id = ? AND hostname = ?",
-      );
-      const rows = await statement.all<{ findings: string }>(
-        projectId,
-        normalized,
-      );
-      const row = rows[0];
-      if (row === undefined) return undefined;
-      return JSON.parse(row.findings) as JsReconFindings;
     },
   };
 };

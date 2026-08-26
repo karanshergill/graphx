@@ -42,6 +42,51 @@ const SINK_PATTERNS: Record<string, RegExp> = {
 const countMatches = (source: string, pattern: RegExp): number =>
   source.match(pattern)?.length ?? 0;
 
+// Endpoints with no recon value: static assets, bundler dev-server internals,
+// and XML-namespace/telemetry hosts. Deliberately kept: .json/.xml/.txt paths,
+// localhost URLs, and third-party URLs that are not known noise.
+const DROPPED_ENDPOINT_EXTENSION =
+  /\.(?:css|map|m?js|png|jpe?g|gif|svg|webp|avif|ico|bmp|tiff?|woff2?|ttf|otf|eot|mp[34]|webm|mov|wav|ogg|flac|pdf|zip|gz|tgz|tar|wasm)$/i;
+
+const DROPPED_ENDPOINT_HOSTS = new Set([
+  "analytics.google.com",
+  "bat.bing.com",
+  "connect.facebook.net",
+  "schema.org",
+  "schemas.xmlsoap.org",
+  "w3.org",
+  "www.google-analytics.com",
+  "www.googletagmanager.com",
+  "www.w3.org",
+]);
+
+const DROPPED_ENDPOINT_HOST_SUFFIXES = [".ingest.sentry.io"];
+
+const DROPPED_ENDPOINT_SEGMENTS = [
+  "/@fs/",
+  "/@react-refresh",
+  "/@vite/",
+  "/node_modules/",
+];
+
+// Regex instead of `new URL()` — the backend runtime (QuickJS) has no URL.
+const ABSOLUTE_URL_HOST = /^https?:\/\/([^/:?#]+)/i;
+
+const shouldDropEndpoint = (value: string): boolean => {
+  const withoutQuery = value.split(/[?#]/, 1)[0] ?? value;
+  if (DROPPED_ENDPOINT_EXTENSION.test(withoutQuery)) return true;
+  for (const segment of DROPPED_ENDPOINT_SEGMENTS) {
+    if (value.includes(segment)) return true;
+  }
+  const host = ABSOLUTE_URL_HOST.exec(value)?.[1]?.toLowerCase();
+  if (host !== undefined) {
+    if (DROPPED_ENDPOINT_HOSTS.has(host)) return true;
+    if (DROPPED_ENDPOINT_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix)))
+      return true;
+  }
+  return false;
+};
+
 export const extractJsRecon = (source: string): JsReconExtraction => {
   const endpoints = new Set<string>();
   const graphqlOperations = new Set<string>();
@@ -50,6 +95,7 @@ export const extractJsRecon = (source: string): JsReconExtraction => {
   for (const match of source.matchAll(STRING_LITERAL)) {
     const value = match[1] ?? match[2] ?? "";
     if (value.length < 2) continue;
+    if (shouldDropEndpoint(value)) continue;
     if (PATH_LIKE.test(value) && !value.startsWith("//")) {
       endpoints.add(value);
     } else if (ABSOLUTE_URL.test(value)) {
@@ -96,7 +142,11 @@ export const mergeJsRecon = (
   let postMessageCalls = 0;
 
   for (const extraction of extractions) {
-    for (const endpoint of extraction.endpoints) endpoints.add(endpoint);
+    for (const endpoint of extraction.endpoints) {
+      // Re-filter in case a caller merges extractions produced before the
+      // drop list existed.
+      if (!shouldDropEndpoint(endpoint)) endpoints.add(endpoint);
+    }
     for (const operation of extraction.graphqlOperations)
       graphqlOperations.add(operation);
     for (const key of extraction.storageKeys) storageKeys.add(key);
