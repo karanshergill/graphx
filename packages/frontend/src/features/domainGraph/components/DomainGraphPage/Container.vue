@@ -532,7 +532,11 @@ const copyReconEndpoints = (): void => {
               <span
                 >JS recon<template v-if="selectedJsRecon">
                   · {{ selectedJsRecon.bundlesScanned }} bundles ·
-                  {{ selectedJsRecon.endpoints.length }} endpoints</template
+                  {{ selectedJsRecon.endpoints.length }} endpoints<template
+                    v-if="selectedJsRecon.sourceMaps.length > 0"
+                  >
+                    · {{ selectedJsRecon.sourceMaps.length }} maps</template
+                  ></template
                 ></span
               >
               <button
@@ -590,6 +594,26 @@ const copyReconEndpoints = (): void => {
                 postMessage: {{ selectedJsRecon.postMessageHandlers }} listeners
                 · {{ selectedJsRecon.postMessageCalls }} calls
               </small>
+              <template v-if="selectedJsRecon.sourceMaps.length > 0">
+                <small>
+                  Source maps ·
+                  {{ selectedJsRecon.sourceModules.length }} modules
+                </small>
+                <ul>
+                  <li
+                    v-for="map in selectedJsRecon.sourceMaps.slice(0, 10)"
+                    :key="map"
+                  >
+                    <code>{{ map }}</code>
+                  </li>
+                </ul>
+                <p
+                  v-if="selectedJsRecon.sourceMaps.length > 10"
+                  class="graphx-assets-more"
+                >
+                  + {{ selectedJsRecon.sourceMaps.length - 10 }} more
+                </p>
+              </template>
               <button
                 v-if="selectedJsRecon.endpoints.length > 0"
                 type="button"

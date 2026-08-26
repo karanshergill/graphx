@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractJsRecon, mergeJsRecon } from "./jsRecon";
+import { extractJsRecon, extractSourceMapRecon, mergeJsRecon } from "./jsRecon";
 
 describe("extractJsRecon", () => {
   it("extracts path-like and absolute URL endpoints, deduped and sorted", () => {
@@ -77,13 +77,13 @@ describe("extractJsRecon", () => {
     });
   });
 
-  it("caps the endpoint list", () => {
+  it("returns every endpoint found, without a cap", () => {
     const source = Array.from(
       { length: 250 },
       (_, index) =>
         `fetch("/api/resource-${index.toString().padStart(3, "0")}");`,
     ).join("\n");
-    expect(extractJsRecon(source).endpoints).toHaveLength(200);
+    expect(extractJsRecon(source).endpoints).toHaveLength(250);
   });
 
   it("drops static assets and bundler dev-server internals", () => {
@@ -156,5 +156,52 @@ describe("mergeJsRecon", () => {
       sinks: {},
     };
     expect(mergeJsRecon([legacy]).endpoints).toEqual(["/api/a"]);
+  });
+});
+
+describe("extractSourceMapRecon", () => {
+  it("extracts from sourcesContent and returns the module tree", () => {
+    const map = JSON.stringify({
+      version: 3,
+      sources: ["webpack://app/./src/api.ts", "webpack://app/./src/auth.ts"],
+      sourcesContent: [
+        'fetch("/api/from-map"); localStorage.getItem("map_token");',
+        'fetch("/api/users"); const q = "query MapOp { viewer }";',
+      ],
+    });
+    const recon = extractSourceMapRecon(map);
+    expect(recon?.sources).toEqual([
+      "webpack://app/./src/api.ts",
+      "webpack://app/./src/auth.ts",
+    ]);
+    expect(recon?.extraction.endpoints).toEqual([
+      "/api/from-map",
+      "/api/users",
+    ]);
+    expect(recon?.extraction.storageKeys).toEqual(["map_token"]);
+    expect(recon?.extraction.graphqlOperations).toEqual(["MapOp"]);
+  });
+
+  it("skips null sourcesContent entries", () => {
+    const map = JSON.stringify({
+      version: 3,
+      sources: ["a.ts", "b.ts"],
+      sourcesContent: [null, 'fetch("/api/kept");'],
+    });
+    const recon = extractSourceMapRecon(map);
+    expect(recon?.extraction.endpoints).toEqual(["/api/kept"]);
+  });
+
+  it("returns sources even without sourcesContent", () => {
+    const map = JSON.stringify({ version: 3, sources: ["a.ts"] });
+    const recon = extractSourceMapRecon(map);
+    expect(recon?.sources).toEqual(["a.ts"]);
+    expect(recon?.extraction.endpoints).toEqual([]);
+  });
+
+  it("returns undefined for invalid JSON or missing sources", () => {
+    expect(extractSourceMapRecon("not json")).toBeUndefined();
+    expect(extractSourceMapRecon('{"version":3}')).toBeUndefined();
+    expect(extractSourceMapRecon('"just a string"')).toBeUndefined();
   });
 });

@@ -11,12 +11,11 @@ export type JsReconFindings = JsReconExtraction & {
   host: string;
   generatedAt: string;
   bundlesScanned: number;
+  sourceMapsScanned: number;
+  sourceMaps: string[];
+  sourceModules: string[];
   truncated: boolean;
 };
-
-const MAX_ENDPOINTS = 200;
-const MAX_GRAPHQL_OPERATIONS = 100;
-const MAX_STORAGE_KEYS = 100;
 
 const STRING_LITERAL = /"((?:[^"\\]|\\.){1,300})"|'((?:[^'\\]|\\.){1,300})'/g;
 const ABSOLUTE_URL = /^https?:\/\/\S+$/i;
@@ -120,11 +119,9 @@ export const extractJsRecon = (source: string): JsReconExtraction => {
   }
 
   return {
-    endpoints: [...endpoints].sort().slice(0, MAX_ENDPOINTS),
-    graphqlOperations: [...graphqlOperations]
-      .sort()
-      .slice(0, MAX_GRAPHQL_OPERATIONS),
-    storageKeys: [...storageKeys].sort().slice(0, MAX_STORAGE_KEYS),
+    endpoints: [...endpoints].sort(),
+    graphqlOperations: [...graphqlOperations].sort(),
+    storageKeys: [...storageKeys].sort(),
     postMessageHandlers: countMatches(source, MESSAGE_LISTENER),
     postMessageCalls: countMatches(source, POST_MESSAGE_CALL),
     sinks,
@@ -158,15 +155,53 @@ export const mergeJsRecon = (
   }
 
   return {
-    endpoints: [...endpoints].sort().slice(0, MAX_ENDPOINTS),
-    graphqlOperations: [...graphqlOperations]
-      .sort()
-      .slice(0, MAX_GRAPHQL_OPERATIONS),
-    storageKeys: [...storageKeys].sort().slice(0, MAX_STORAGE_KEYS),
+    endpoints: [...endpoints].sort(),
+    graphqlOperations: [...graphqlOperations].sort(),
+    storageKeys: [...storageKeys].sort(),
     postMessageHandlers,
     postMessageCalls,
     sinks: Object.fromEntries(
       [...sinks.entries()].sort(([left], [right]) => left.localeCompare(right)),
     ),
+  };
+};
+
+export type SourceMapRecon = {
+  // Module paths from the map's `sources` array — the original module tree.
+  sources: string[];
+  // Extraction over the map's `sourcesContent` (original, unminified source).
+  extraction: JsReconExtraction;
+};
+
+export const extractSourceMapRecon = (
+  text: string,
+): SourceMapRecon | undefined => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const candidate = parsed as { sources?: unknown; sourcesContent?: unknown };
+  if (!Array.isArray(candidate.sources)) return undefined;
+
+  const sources = new Set<string>();
+  for (const source of candidate.sources) {
+    if (typeof source === "string" && source.length > 0) sources.add(source);
+  }
+
+  const extractions: JsReconExtraction[] = [];
+  if (Array.isArray(candidate.sourcesContent)) {
+    for (const content of candidate.sourcesContent) {
+      if (typeof content === "string" && content.length > 0) {
+        extractions.push(extractJsRecon(content));
+      }
+    }
+  }
+
+  return {
+    sources: [...sources].sort(),
+    extraction: mergeJsRecon(extractions),
   };
 };

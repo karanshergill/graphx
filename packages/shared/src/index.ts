@@ -8,9 +8,11 @@ export type { API, ApiMapResponse } from "./api";
 export type { Events } from "./events";
 export {
   extractJsRecon,
+  extractSourceMapRecon,
   mergeJsRecon,
   type JsReconExtraction,
   type JsReconFindings,
+  type SourceMapRecon,
 } from "./jsRecon";
 export type { ProjectContext } from "./project";
 export { err, ok, type Result } from "./result";

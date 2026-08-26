@@ -27,12 +27,17 @@ sees it in the domain selection panel.
   `sdk.requests.query()` helper returned zero items for filters that match
   via GraphQL — the sweep deliberately uses `sdk.graphql.execute` instead
   (same pattern as `agentapi/query.ts`).
-- Budgets: 100 bundles, 8 MB per body, 32 MB total per sweep; any breach sets
-  `truncated: true`. The sweep never sends traffic to targets.
+- No budgets or caps: every observed bundle and source map is fetched,
+  parsed, and merged in full; result lists are complete. `truncated` is
+  reserved for the pagination-stall guard (loop safety; should never fire).
+  The sweep never sends traffic to targets.
+- Source maps (`%.map`, status < 400) are parsed as JSON: `sources` feeds the
+  module tree (`sourceModules`), and every `sourcesContent` entry (original
+  unminified source) goes through the same extraction and is merged into the
+  findings. `sourceMaps` lists the observed map paths — the exploitation lead
+  list.
 - Findings persist per project+host in SQLite (`js_recon` table), same
   pattern as domain marks.
-- Result caps: 200 endpoints, 100 GraphQL operations, 100 storage keys per
-  merged finding.
 - Endpoint noise is dropped at extraction and again at merge: static asset
   extensions (`.js`, `.css`, fonts, images, media, archives, `.map`, `.wasm`
   — query strings tolerated), bundler dev-server internals (`/node_modules/`,
@@ -48,7 +53,7 @@ sees it in the domain selection panel.
 
 | Surface | Shape |
 | --- | --- |
-| `GET /js-recon?host=<hostname>&scope=<id\|name>` | `{ project, scope, host, generatedAt, bundlesScanned, truncated, endpoints[], graphqlOperations[], storageKeys[], postMessageHandlers, postMessageCalls, sinks{} }` |
+| `GET /js-recon?host=<hostname>&scope=<id\|name>` | `{ project, scope, host, generatedAt, bundlesScanned, sourceMapsScanned, sourceMaps[], sourceModules[], truncated, endpoints[], graphqlOperations[], storageKeys[], postMessageHandlers, postMessageCalls, sinks{} }` |
 | Plugin API `getJsRecon(host, scopeId?)` | `Result<JsReconFindings>`; sweeps + persists |
 
 - Selection panel gains a "JS recon" section: Scan/Rescan, endpoint list
@@ -62,7 +67,7 @@ sees it in the domain selection panel.
 | ID | Requirement | Implementation | Acceptance evidence |
 | --- | --- | --- | --- |
 | R1 | Pure, tested extraction | `shared/src/jsRecon.ts` | `jsRecon.test.ts` (13 tests) |
-| R2 | Passive body sweep with budgets | `services/jsRecon.ts` | live: mclass.amplify.com, 68 bundles, 200 endpoints (2026-08-26) |
+| R2 | Passive body sweep with budgets | `services/jsRecon.ts` | live: mclass.amplify.com, 92 bundles + 8 maps, untruncated (2026-08-26) |
 | R3 | Per-project persistence | `repositories/jsRecon.ts` | live: row in plugin `data.db` `js_recon` (2026-08-26) |
 | R4 | Agent route | `GET /js-recon` in `agentapi/routes.ts` | live: `curl :8771/js-recon?host=mclass.amplify.com&scope=1` → 200 (2026-08-26) |
 | R5 | UI panel | `DomainGraphPage/Container.vue` | vue-tsc; build |

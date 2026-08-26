@@ -3,6 +3,7 @@ import { Buffer } from "buffer";
 import {
   err,
   extractJsRecon,
+  extractSourceMapRecon,
   type JsReconExtraction,
   type JsReconFindings,
   mergeJsRecon,
@@ -16,9 +17,6 @@ import type { JsReconRepository } from "../repositories";
 import type { BackendSDK } from "../types";
 
 const PAGE_SIZE = 200;
-const MAX_BUNDLES = 100;
-const MAX_BODY_LENGTH = 8_000_000;
-const MAX_TOTAL_LENGTH = 32_000_000;
 
 type JsRequestPage = {
   requests: {
@@ -31,11 +29,16 @@ type JsRequestBody = {
   request?: { response?: { raw?: string } };
 };
 
+type Candidate = { id: string; path: string };
+
 // LIKE without wildcards is ASCII case-insensitive; the second clause also
 // matches Host headers carrying an explicit port.
-const buildFilter = (host: string): string =>
+const buildFilter = (host: string, pathClause: string): string =>
   `(req.host.like:"${host}" or req.host.like:"${host}:%") ` +
-  'and (req.path.like:"%.js" or req.path.like:"%.mjs") and resp.code.lt:400';
+  `and ${pathClause} and resp.code.lt:400`;
+
+const JS_PATH_CLAUSE = '(req.path.like:"%.js" or req.path.like:"%.mjs")';
+const MAP_PATH_CLAUSE = '(req.path.like:"%.map")';
 
 // `raw` is the base64-encoded raw HTTP response (status line, headers, body).
 const decodeBody = (raw: string): string | undefined => {
@@ -45,17 +48,13 @@ const decodeBody = (raw: string): string | undefined => {
   return text.slice(separator + 4);
 };
 
-const buildHostJsRecon = async (
+const collectCandidates = async (
   sdk: BackendSDK,
   scopeId: string,
-  host: string,
-): Promise<JsReconFindings> => {
-  const normalized = normalizeHostname(host);
-  if (normalized === undefined) throw new Error(`Invalid host "${host}".`);
-
+  filter: string,
+): Promise<{ candidates: Candidate[]; truncated: boolean }> => {
   const seenPaths = new Set<string>();
-  const extractions: JsReconExtraction[] = [];
-  let totalLength = 0;
+  const candidates: Candidate[] = [];
   let truncated = false;
   let after: string | undefined;
 
@@ -65,7 +64,7 @@ const buildHostJsRecon = async (
       "query($scopeId: ID, $filter: HTTPQLInput, $first: Int, $after: String, $order: RequestResponseOrderInput) { requests(scopeId: $scopeId, filter: $filter, first: $first, after: $after, order: $order) { edges { cursor node { id path } } pageInfo { endCursor hasNextPage } } }",
       {
         scopeId,
-        filter: { code: buildFilter(normalized) },
+        filter: { code: filter },
         first: PAGE_SIZE,
         order: { by: "CREATED_AT", ordering: "DESC" },
         ...(after === undefined ? {} : { after }),
@@ -76,33 +75,13 @@ const buildHostJsRecon = async (
       const { id, path } = edge.node;
       if (seenPaths.has(path)) continue;
       seenPaths.add(path);
-      if (
-        extractions.length >= MAX_BUNDLES ||
-        totalLength >= MAX_TOTAL_LENGTH
-      ) {
-        truncated = true;
-        break;
-      }
-      const bodyData = await execute<JsRequestBody>(
-        sdk,
-        "query($id: ID!) { request(id: $id) { response { raw } } }",
-        { id },
-      );
-      const raw = bodyData.request?.response?.raw;
-      if (typeof raw !== "string") continue;
-      const text = decodeBody(raw);
-      if (text === undefined) continue;
-      if (text.length > MAX_BODY_LENGTH) {
-        truncated = true;
-        continue;
-      }
-      totalLength += text.length;
-      extractions.push(extractJsRecon(text));
+      candidates.push({ id, path });
     }
-    if (truncated) break;
 
     const { endCursor, hasNextPage } = data.requests.pageInfo;
     if (!hasNextPage || endCursor === undefined) break;
+    // Loop-safety guard, not a budget: a non-advancing cursor would page
+    // forever. Should never fire.
     if (endCursor === after) {
       sdk.console.warn(
         "GraphX JS recon sweep stopped: pagination cursor did not advance; results are truncated.",
@@ -113,10 +92,75 @@ const buildHostJsRecon = async (
     after = endCursor;
   }
 
+  return { candidates, truncated };
+};
+
+const fetchBodyText = async (
+  sdk: BackendSDK,
+  id: string,
+): Promise<string | undefined> => {
+  const data = await execute<JsRequestBody>(
+    sdk,
+    "query($id: ID!) { request(id: $id) { response { raw } } }",
+    { id },
+  );
+  const raw = data.request?.response?.raw;
+  if (typeof raw !== "string") return undefined;
+  return decodeBody(raw);
+};
+
+const buildHostJsRecon = async (
+  sdk: BackendSDK,
+  scopeId: string,
+  host: string,
+): Promise<JsReconFindings> => {
+  const normalized = normalizeHostname(host);
+  if (normalized === undefined) throw new Error(`Invalid host "${host}".`);
+
+  const extractions: JsReconExtraction[] = [];
+  const sourceMaps: string[] = [];
+  const sourceModules = new Set<string>();
+  let bundlesScanned = 0;
+  let truncated = false;
+
+  const jsCandidates = await collectCandidates(
+    sdk,
+    scopeId,
+    buildFilter(normalized, JS_PATH_CLAUSE),
+  );
+  truncated ||= jsCandidates.truncated;
+
+  for (const candidate of jsCandidates.candidates) {
+    const text = await fetchBodyText(sdk, candidate.id);
+    if (text === undefined) continue;
+    bundlesScanned += 1;
+    extractions.push(extractJsRecon(text));
+  }
+
+  const mapCandidates = await collectCandidates(
+    sdk,
+    scopeId,
+    buildFilter(normalized, MAP_PATH_CLAUSE),
+  );
+  truncated ||= mapCandidates.truncated;
+
+  for (const candidate of mapCandidates.candidates) {
+    const text = await fetchBodyText(sdk, candidate.id);
+    if (text === undefined) continue;
+    const recon = extractSourceMapRecon(text);
+    if (recon === undefined) continue;
+    sourceMaps.push(candidate.path);
+    for (const module of recon.sources) sourceModules.add(module);
+    extractions.push(recon.extraction);
+  }
+
   return {
     host: normalized,
     generatedAt: new Date().toISOString(),
-    bundlesScanned: extractions.length,
+    bundlesScanned,
+    sourceMapsScanned: sourceMaps.length,
+    sourceMaps: sourceMaps.sort(),
+    sourceModules: [...sourceModules].sort(),
     truncated,
     ...mergeJsRecon(extractions),
   };
