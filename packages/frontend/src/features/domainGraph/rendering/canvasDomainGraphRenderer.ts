@@ -498,6 +498,10 @@ export const createCanvasDomainGraphRenderer = (
       selectedNode = undefined;
       onSelect(undefined);
     }
+    if (hoveredNode !== undefined && !graph.hasNode(hoveredNode)) {
+      hoveredNode = undefined;
+      canvas.style.cursor = "grab";
+    }
     if (autoFit) fitGraph();
     draw();
     if (topologyChanged) {

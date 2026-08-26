@@ -12,11 +12,12 @@ import type { BackendSDK } from "../types";
 export const getApiMap = async (
   sdk: BackendSDK,
   host: string,
+  scopeId?: string,
 ): Promise<Result<ApiMapResponse>> => {
   try {
     if (normalizeHostname(host) === undefined)
       return err(`Invalid host "${host}".`);
-    const scope = await resolveScope(sdk, undefined);
+    const scope = await resolveScope(sdk, scopeId);
     return ok(await buildHostApiMap(sdk, scope.id, host));
   } catch (error: unknown) {
     return err(error instanceof Error ? error.message : String(error));

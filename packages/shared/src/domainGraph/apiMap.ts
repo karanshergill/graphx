@@ -38,7 +38,8 @@ export const segmentParamKind = (
   )
     return "uuid";
   if (/^[0-9A-HJKMNP-TV-Z]{26}$/i.test(segment)) return "ulid";
-  if (/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?/.test(segment)) return "date";
+  if (/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?$/.test(segment))
+    return "date";
   if (
     segment.length >= 16 &&
     /\d/.test(segment) &&

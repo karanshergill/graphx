@@ -15,5 +15,8 @@ export type API = {
   listDomainMarks: () => Promise<Result<string[]>>;
   addDomainMarks: (hostnames: string[]) => Promise<Result<string[]>>;
   removeDomainMarks: (hostnames: string[]) => Promise<Result<string[]>>;
-  getApiMap: (host: string) => Promise<Result<ApiMapResponse>>;
+  getApiMap: (
+    host: string,
+    scopeId?: string,
+  ) => Promise<Result<ApiMapResponse>>;
 };

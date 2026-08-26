@@ -7,6 +7,7 @@ import {
 import type { FrontendSDK } from "@/types";
 
 const PAGE_SIZE = 500;
+const MAX_SWEEP_REQUESTS = 100_000;
 
 type JsAssetSweep = {
   requests: ObservedAssetRequest[];
@@ -54,6 +55,12 @@ export const readJsAssetRequests = async (
     const { endCursor, hasNextPage } = result.requests.pageInfo;
     if (!hasNextPage || endCursor === undefined || endCursor === null) {
       return { requests, truncated: false };
+    }
+    if (requests.length >= MAX_SWEEP_REQUESTS) {
+      sdk.log.warn(
+        "GraphX JS asset sweep stopped: request budget exhausted; asset lists are truncated.",
+      );
+      return { requests, truncated: true };
     }
     if (endCursor === after) {
       sdk.log.warn(

@@ -3,6 +3,7 @@ import { createServer, type Server, type Socket } from "net";
 
 const AGENT_API_PORT = 8771;
 const AGENT_API_HOST = "127.0.0.1";
+const SOCKET_IDLE_TIMEOUT_MS = 30_000;
 
 export type AgentRoute = {
   method: string;
@@ -61,6 +62,7 @@ export const startAgentApiServer = (
     };
 
     socket.on("data", (chunk: Buffer) => {
+      resetIdleTimer();
       void (async () => {
         raw = Buffer.concat([raw, chunk]);
         if (raw.length > 16_384) {
@@ -101,6 +103,14 @@ export const startAgentApiServer = (
         }
       })().catch(() => socket.destroy());
     });
+    // This runtime has no socket-level timeout; enforce an idle timeout
+    // manually so abandoned connections cannot accumulate.
+    let idleTimer = setTimeout(() => socket.destroy(), SOCKET_IDLE_TIMEOUT_MS);
+    const resetIdleTimer = (): void => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => socket.destroy(), SOCKET_IDLE_TIMEOUT_MS);
+    };
+    socket.on("close", () => clearTimeout(idleTimer));
     socket.on("error", () => socket.destroy());
   });
 

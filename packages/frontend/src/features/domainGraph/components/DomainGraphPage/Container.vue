@@ -233,7 +233,7 @@ const {
 const drillIn = (hostname: string): void => {
   selectedEndpoint.value = undefined;
   drillHost.value = hostname;
-  void loadApiMap(hostname);
+  void loadApiMap(hostname, selectedScopeId.value);
 };
 
 const drillOut = (): void => {
@@ -242,6 +242,12 @@ const drillOut = (): void => {
   renderError.value = undefined;
   clearApiMap();
 };
+
+// A project or scope switch invalidates the cached maps; leave the drill-down
+// so the old context's routes are never shown as if they were current.
+watch([() => project.value?.id, selectedScopeId], () => {
+  if (drillHost.value !== undefined) drillOut();
+});
 
 const onDrilldown = (): void => {
   const hostname = selectedHostname.value;

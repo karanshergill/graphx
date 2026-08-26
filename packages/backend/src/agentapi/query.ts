@@ -98,6 +98,7 @@ export const buildScopeDomainGraph = (
   });
 
 const PAGE_SIZE = 500;
+const MAX_SWEEP_REQUESTS = 100_000;
 
 type JsAssetSweep = {
   requests: ObservedAssetRequest[];
@@ -154,6 +155,12 @@ export const readJsAssetRequests = async (
     if (!hasNextPage || endCursor === undefined) {
       return { requests, truncated: false };
     }
+    if (requests.length >= MAX_SWEEP_REQUESTS) {
+      sdk.console.warn(
+        "GraphX sweep stopped: request budget exhausted; results are truncated.",
+      );
+      return { requests, truncated: true };
+    }
     if (endCursor === after) {
       sdk.console.warn(
         "GraphX JS asset sweep stopped: pagination cursor did not advance; asset lists are truncated.",
@@ -183,7 +190,9 @@ const readSitemapHostPaths = async (
   );
   const rootIds = roots.sitemapRootEntries.edges
     .filter(
-      (edge) => edge.node.kind === "DOMAIN" && edge.node.label === normalized,
+      (edge) =>
+        edge.node.kind === "DOMAIN" &&
+        normalizeHostname(edge.node.label) === normalized,
     )
     .map((edge) => edge.node.id);
   if (rootIds.length === 0) {
@@ -216,8 +225,10 @@ const readSitemapHostPaths = async (
     );
     const pathFor = (id: string): string | undefined => {
       const segments: string[] = [];
+      const visited = new Set<string>();
       let current = byId.get(id);
-      while (current !== undefined) {
+      while (current !== undefined && !visited.has(current.id)) {
+        visited.add(current.id);
         segments.unshift(current.label);
         if (current.parentId === undefined || current.parentId === rootId)
           break;
@@ -292,7 +303,13 @@ const readHostRequests = async (
       "query($scopeId: ID, $filter: HTTPQLInput, $first: Int, $after: String, $order: RequestResponseOrderInput) { requests(scopeId: $scopeId, filter: $filter, first: $first, after: $after, order: $order) { edges { node { path query method createdAt response { statusCode } } } pageInfo { endCursor hasNextPage } } }",
       {
         scopeId,
-        filter: { code: `req.host.eq:"${normalized}"` },
+        filter: {
+          // HTTPQL eq is case-sensitive and matches the raw Host header, so
+          // eq would miss `Example.COM` and `example.com:8080`. LIKE without
+          // wildcards is ASCII case-insensitive; the second clause also
+          // matches Host headers carrying an explicit port.
+          code: `(req.host.like:"${normalized}" or req.host.like:"${normalized}:%")`,
+        },
         first: PAGE_SIZE,
         order: { by: "CREATED_AT", ordering: "DESC" },
         ...(after === undefined ? {} : { after }),
@@ -314,6 +331,12 @@ const readHostRequests = async (
     const { endCursor, hasNextPage } = data.requests.pageInfo;
     if (!hasNextPage || endCursor === undefined) {
       return { requests, truncated: false };
+    }
+    if (requests.length >= MAX_SWEEP_REQUESTS) {
+      sdk.console.warn(
+        "GraphX sweep stopped: request budget exhausted; results are truncated.",
+      );
+      return { requests, truncated: true };
     }
     if (endCursor === after) {
       sdk.console.warn(

@@ -294,6 +294,8 @@ export const createSigmaDomainGraphRenderer = (
       selectedNode = undefined;
       onSelect(undefined);
     }
+    if (hoveredNode !== undefined && !graph.hasNode(hoveredNode))
+      hoveredNode = undefined;
     invalidateFocusSet();
     renderer.refresh();
     if (topologyChanged) {
@@ -337,7 +339,11 @@ export const createSigmaDomainGraphRenderer = (
     onSelect(graph.getNodeAttribute(selectedNode, "hostname"));
     const displayData = renderer.getNodeDisplayData(selectedNode);
     if (displayData !== undefined) {
-      renderer.getCamera().setState({ x: displayData.x, y: displayData.y });
+      renderer
+        .getCamera()
+        .setState(
+          renderer.graphToViewport({ x: displayData.x, y: displayData.y }),
+        );
     }
     renderer.scheduleRefresh();
   };
@@ -351,12 +357,19 @@ export const createSigmaDomainGraphRenderer = (
     onSelect(hostname);
     const displayData = renderer.getNodeDisplayData(node);
     if (displayData !== undefined) {
-      renderer.getCamera().setState({ x: displayData.x, y: displayData.y });
+      renderer
+        .getCamera()
+        .setState(
+          renderer.graphToViewport({ x: displayData.x, y: displayData.y }),
+        );
     }
     renderer.scheduleRefresh();
   };
 
   const resetView = (): void => {
+    // The custom bounding box captured on first drag goes stale as the graph
+    // evolves; drop it so the reset fits the graph as it exists now.
+    renderer.setCustomBBox(null);
     void renderer.getCamera().animatedReset({
       duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches
         ? 0

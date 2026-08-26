@@ -147,7 +147,9 @@ export const useDomainGraph = () => {
         generatedAt: new Date().toISOString(),
       });
       const nextRevision = snapshotRevision(nextSnapshot);
-      if (nextRevision !== revision) {
+      // Snapshot may have been cleared by an error path while the old
+      // revision survived; never leave the view stuck empty.
+      if (nextRevision !== revision || snapshot.value === undefined) {
         snapshot.value = nextSnapshot;
         revision = nextRevision;
       }

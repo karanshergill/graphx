@@ -23,12 +23,18 @@ export type HostAssets = {
 
 type AssetKind = "bundle" | "map";
 
+const toIsoTimestamp = (value: number): string | undefined => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+};
+
 export const normalizeSeenAt = (value: unknown): string | undefined => {
-  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Date)
+    return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
   if (typeof value === "number" && Number.isFinite(value))
-    return new Date(value).toISOString();
+    return toIsoTimestamp(value);
   if (typeof value === "string") {
-    if (/^\d+$/.test(value)) return new Date(Number(value)).toISOString();
+    if (/^\d+$/.test(value)) return toIsoTimestamp(Number(value));
     return value.length > 0 ? value : undefined;
   }
   return undefined;
@@ -66,21 +72,24 @@ export const groupAssetsByHost = (
     if (request.statusCode !== undefined && request.statusCode >= 400) continue;
     const kind = classifyAssetPath(request.path);
     if (kind === undefined) continue;
+    const host = request.host.trim().toLowerCase();
+    if (host.length === 0) continue;
+    const path = request.path.split(/[?#]/, 1)[0] ?? request.path;
 
     if (kind === "map") {
-      const paths = mapsByHost.get(request.host) ?? new Set<string>();
-      paths.add(request.path);
-      mapsByHost.set(request.host, paths);
+      const paths = mapsByHost.get(host) ?? new Set<string>();
+      paths.add(path);
+      mapsByHost.set(host, paths);
       if (request.seenAt !== undefined) {
-        const latest = mapLastSeenByHost.get(request.host);
+        const latest = mapLastSeenByHost.get(host);
         if (latest === undefined || request.seenAt > latest)
-          mapLastSeenByHost.set(request.host, request.seenAt);
+          mapLastSeenByHost.set(host, request.seenAt);
       }
       continue;
     }
 
-    const bundles = bundlesByHost.get(request.host) ?? new Map();
-    const existing = bundles.get(request.path);
+    const bundles = bundlesByHost.get(host) ?? new Map();
+    const existing = bundles.get(path);
     const entry = {
       requestCount: (existing?.requestCount ?? 0) + 1,
       lastStatus: request.statusCode ?? existing?.lastStatus,
@@ -93,8 +102,8 @@ export const groupAssetsByHost = (
       if (entry.lastSeen === undefined || request.seenAt > entry.lastSeen)
         entry.lastSeen = request.seenAt;
     }
-    bundles.set(request.path, entry);
-    bundlesByHost.set(request.host, bundles);
+    bundles.set(path, entry);
+    bundlesByHost.set(host, bundles);
   }
 
   const hosts = new Set([...bundlesByHost.keys(), ...mapsByHost.keys()]);
