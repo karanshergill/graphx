@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { extractJsRecon, extractSourceMapRecon, mergeJsRecon } from "./jsRecon";
+import {
+  extractJsRecon,
+  extractSourceMapRecon,
+  findSourceMapRef,
+  mergeJsRecon,
+  normalizeThrottleMs,
+} from "./jsRecon";
 
 describe("extractJsRecon", () => {
   it("extracts path-like and absolute URL endpoints, deduped and sorted", () => {
@@ -123,6 +129,20 @@ describe("extractJsRecon", () => {
     const source = `const lib = "https://cdn.example.com/lib.js?v=1.2.3";`;
     expect(extractJsRecon(source).endpoints).toEqual([]);
   });
+
+  it("extracts endpoints from template literals, keeping interpolations", () => {
+    const source = [
+      "fetch(`/api/users/${userId}`);",
+      "fetch(`/api/health`);",
+      "const junk = `hello ${name} world`;",
+      "const url = `https://api.example.com/v2/items/${id}`;",
+    ].join("\n");
+    expect(extractJsRecon(source).endpoints).toEqual([
+      "/api/health",
+      "/api/users/${userId}",
+      "https://api.example.com/v2/items/${id}",
+    ]);
+  });
 });
 
 describe("mergeJsRecon", () => {
@@ -203,5 +223,45 @@ describe("extractSourceMapRecon", () => {
     expect(extractSourceMapRecon("not json")).toBeUndefined();
     expect(extractSourceMapRecon('{"version":3}')).toBeUndefined();
     expect(extractSourceMapRecon('"just a string"')).toBeUndefined();
+  });
+});
+
+describe("findSourceMapRef", () => {
+  it("returns the last sourceMappingURL reference", () => {
+    const source =
+      "code();\n//# sourceMappingURL=first.js.map\nmore();\n//# sourceMappingURL=last.js.map\n";
+    expect(findSourceMapRef(source)).toBe("last.js.map");
+  });
+
+  it("handles absolute and data-URI references", () => {
+    expect(
+      findSourceMapRef("//# sourceMappingURL=https://cdn.example.com/a.js.map"),
+    ).toBe("https://cdn.example.com/a.js.map");
+    expect(
+      findSourceMapRef(
+        "//# sourceMappingURL=data:application/json;base64,eyJ9",
+      ),
+    ).toBe("data:application/json;base64,eyJ9");
+  });
+
+  it("returns undefined when no reference exists", () => {
+    expect(findSourceMapRef("const a = 1;")).toBeUndefined();
+  });
+});
+
+describe("normalizeThrottleMs", () => {
+  it("falls back to the default for missing or invalid values", () => {
+    expect(normalizeThrottleMs(undefined)).toBe(2_000);
+    expect(normalizeThrottleMs(null)).toBe(2_000);
+    expect(normalizeThrottleMs("")).toBe(2_000);
+    expect(normalizeThrottleMs("abc")).toBe(2_000);
+    expect(normalizeThrottleMs(-5)).toBe(2_000);
+  });
+
+  it("accepts numbers and numeric strings, floored; 0 disables", () => {
+    expect(normalizeThrottleMs(500)).toBe(500);
+    expect(normalizeThrottleMs("750")).toBe(750);
+    expect(normalizeThrottleMs(250.7)).toBe(250);
+    expect(normalizeThrottleMs(0)).toBe(0);
   });
 });

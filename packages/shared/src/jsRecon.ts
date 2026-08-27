@@ -13,11 +13,31 @@ export type JsReconFindings = JsReconExtraction & {
   bundlesScanned: number;
   sourceMapsScanned: number;
   sourceMaps: string[];
+  sourceMapsBlocked: string[];
+  sourceMapsFetched: string[];
+  sourceMapsInline: string[];
   sourceModules: string[];
   truncated: boolean;
 };
 
-const STRING_LITERAL = /"((?:[^"\\]|\\.){1,300})"|'((?:[^'\\]|\\.){1,300})'/g;
+const STRING_LITERAL =
+  /"((?:[^"\\]|\\.){1,300})"|'((?:[^'\\]|\\.){1,300})'|`((?:[^`\\]|\\.){1,300})`/g;
+
+export const DEFAULT_ACTIVE_FETCH_DELAY_MS = 2_000;
+
+// Caller-controlled delay between live source-map fetches. Missing or
+// invalid values fall back to the default; 0 disables throttling explicitly.
+export const normalizeThrottleMs = (value: unknown): number => {
+  if (value === undefined || value === null || value === "") {
+    return DEFAULT_ACTIVE_FETCH_DELAY_MS;
+  }
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return DEFAULT_ACTIVE_FETCH_DELAY_MS;
+  }
+  return Math.floor(parsed);
+};
+const TEMPLATE_EXPR = /\$\{[^}]*\}/g;
 const ABSOLUTE_URL = /^https?:\/\/\S+$/i;
 const PATH_LIKE = /^\/[A-Za-z0-9._~!$&()*+,;=:@%/-]+$/;
 const GRAPHQL_OPERATION =
@@ -92,12 +112,17 @@ export const extractJsRecon = (source: string): JsReconExtraction => {
   const storageKeys = new Set<string>();
 
   for (const match of source.matchAll(STRING_LITERAL)) {
-    const value = match[1] ?? match[2] ?? "";
+    const value = match[1] ?? match[2] ?? match[3] ?? "";
     if (value.length < 2) continue;
     if (shouldDropEndpoint(value)) continue;
-    if (PATH_LIKE.test(value) && !value.startsWith("//")) {
+    // Template literals carry ${...} interpolations, which PATH_LIKE and
+    // ABSOLUTE_URL reject; test the static shape but keep the original so
+    // parameter positions stay visible.
+    const testable =
+      match[3] !== undefined ? value.replace(TEMPLATE_EXPR, "") : value;
+    if (PATH_LIKE.test(testable) && !testable.startsWith("//")) {
       endpoints.add(value);
-    } else if (ABSOLUTE_URL.test(value)) {
+    } else if (ABSOLUTE_URL.test(testable)) {
       endpoints.add(value);
     }
   }
@@ -204,4 +229,15 @@ export const extractSourceMapRecon = (
     sources: [...sources].sort(),
     extraction: mergeJsRecon(extractions),
   };
+};
+
+const SOURCEMAP_REFERENCE = /\/\/# sourceMappingURL=(\S+)/g;
+
+// The spec's winning reference is the last one in the file.
+export const findSourceMapRef = (source: string): string | undefined => {
+  let found: string | undefined;
+  for (const match of source.matchAll(SOURCEMAP_REFERENCE)) {
+    found = match[1];
+  }
+  return found;
 };

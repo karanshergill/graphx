@@ -2,6 +2,7 @@
 import Button from "primevue/button";
 import Select from "primevue/select";
 import type { ApiRoute, JsReconFindings } from "shared";
+import { DEFAULT_ACTIVE_FETCH_DELAY_MS } from "shared";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { RouteTreeCanvas, useApiMap } from "../../../routeTree";
@@ -268,6 +269,7 @@ const copyRouteTemplate = (): void => {
 
 const jsReconByHost = ref(new Map<string, JsReconFindings>());
 const jsReconLoading = ref(false);
+const jsReconThrottle = ref(DEFAULT_ACTIVE_FETCH_DELAY_MS);
 const selectedJsRecon = computed(() => {
   const hostname = selectedHostname.value;
   return hostname === undefined ? undefined : jsReconByHost.value.get(hostname);
@@ -281,6 +283,7 @@ const scanJsRecon = async (): Promise<void> => {
     const result = await sdk.backend.getJsRecon(
       hostname,
       selectedScopeId.value,
+      jsReconThrottle.value,
     );
     if (result.kind === "Error") {
       sdk.window.showToast(result.error, { variant: "error" });
@@ -539,6 +542,15 @@ const copyReconEndpoints = (): void => {
                   ></template
                 ></span
               >
+              <input
+                v-model.number="jsReconThrottle"
+                type="number"
+                min="0"
+                step="100"
+                class="graphx-recon-throttle"
+                title="Delay between live source-map fetches (ms); 0 disables throttling"
+                aria-label="Source-map fetch delay in milliseconds"
+              />
               <button
                 type="button"
                 :disabled="jsReconLoading"
@@ -614,6 +626,41 @@ const copyReconEndpoints = (): void => {
                   + {{ selectedJsRecon.sourceMaps.length - 10 }} more
                 </p>
               </template>
+              <template v-if="selectedJsRecon.sourceMapsBlocked.length > 0">
+                <small> Blocked source maps (4xx/5xx — bypass leads) </small>
+                <ul>
+                  <li
+                    v-for="map in selectedJsRecon.sourceMapsBlocked.slice(
+                      0,
+                      10,
+                    )"
+                    :key="map"
+                  >
+                    <code>{{ map }}</code>
+                  </li>
+                </ul>
+                <p
+                  v-if="selectedJsRecon.sourceMapsBlocked.length > 10"
+                  class="graphx-assets-more"
+                >
+                  + {{ selectedJsRecon.sourceMapsBlocked.length - 10 }} more
+                </p>
+              </template>
+              <small
+                v-if="
+                  selectedJsRecon.sourceMapsFetched.length > 0 ||
+                  selectedJsRecon.sourceMapsInline.length > 0
+                "
+              >
+                <template v-if="selectedJsRecon.sourceMapsFetched.length > 0">
+                  Fetched live:
+                  {{ selectedJsRecon.sourceMapsFetched.join(", ") }}.
+                </template>
+                <template v-if="selectedJsRecon.sourceMapsInline.length > 0">
+                  Inline maps in
+                  {{ selectedJsRecon.sourceMapsInline.length }} bundle(s).
+                </template>
+              </small>
               <button
                 v-if="selectedJsRecon.endpoints.length > 0"
                 type="button"

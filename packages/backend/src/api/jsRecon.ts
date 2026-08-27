@@ -8,9 +8,11 @@ type JsReconApi = {
     sdk: BackendSDK,
     host: string,
     scopeId?: string,
+    throttleMs?: number,
   ) => Promise<Result<JsReconFindings>>;
 };
 
 export const createJsReconApi = (service: JsReconService): JsReconApi => ({
-  getJsRecon: (_sdk, host, scopeId) => service.scan(host, scopeId),
+  getJsRecon: (_sdk, host, scopeId, throttleMs) =>
+    service.scan(host, scopeId, throttleMs),
 });

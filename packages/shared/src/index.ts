@@ -7,9 +7,12 @@ export * from "./domainGraph";
 export type { API, ApiMapResponse } from "./api";
 export type { Events } from "./events";
 export {
+  DEFAULT_ACTIVE_FETCH_DELAY_MS,
   extractJsRecon,
   extractSourceMapRecon,
+  findSourceMapRef,
   mergeJsRecon,
+  normalizeThrottleMs,
   type JsReconExtraction,
   type JsReconFindings,
   type SourceMapRecon,

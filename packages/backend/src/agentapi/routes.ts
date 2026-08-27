@@ -1,5 +1,5 @@
 import type { ApiMapResponse, ScopeDefinition } from "shared";
-import { normalizeHostname } from "shared";
+import { normalizeHostname, normalizeThrottleMs } from "shared";
 
 import type { DomainMarksService, JsReconService } from "../services";
 import type { BackendSDK } from "../types";
@@ -174,7 +174,11 @@ export const createAgentRoutes = (
           if (normalizeHostname(host) === undefined) {
             return badRequest(`Invalid host "${host}".`);
           }
-          const result = await jsReconService.scan(host, scope.id);
+          const result = await jsReconService.scan(
+            host,
+            scope.id,
+            normalizeThrottleMs(query.get("throttle")),
+          );
           if (result.kind === "Error") return badRequest(result.error);
           return ok({
             project: await currentProject(),

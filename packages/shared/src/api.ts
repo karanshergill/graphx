@@ -23,5 +23,6 @@ export type API = {
   getJsRecon: (
     host: string,
     scopeId?: string,
+    throttleMs?: number,
   ) => Promise<Result<JsReconFindings>>;
 };

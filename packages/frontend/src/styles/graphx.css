@@ -583,6 +583,23 @@
   outline: none;
 }
 
+.graphx-assets-header .graphx-recon-throttle {
+  background: transparent;
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 0.35rem;
+  color: var(--p-text-color);
+  font-size: 0.68rem;
+  margin-left: auto;
+  padding: 0.15rem 0.35rem;
+  text-align: right;
+  width: 4.5rem;
+}
+
+.graphx-assets-header .graphx-recon-throttle:focus-visible {
+  border-color: var(--p-primary-color);
+  outline: none;
+}
+
 .graphx-assets ul {
   display: flex;
   flex-direction: column;
