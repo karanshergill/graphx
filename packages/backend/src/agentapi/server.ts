@@ -110,12 +110,19 @@ export const startAgentApiServer = (
     // This runtime has no socket-level timeout; enforce an idle timeout
     // manually so abandoned connections cannot accumulate.
     let idleTimer = setTimeout(() => socket.destroy(), SOCKET_IDLE_TIMEOUT_MS);
-    const stopIdleTimer = (): void => clearTimeout(idleTimer);
+    // Once disarmed (a complete request arrived), the timer stays disarmed —
+    // later data chunks must not re-arm it while the handler is working.
+    let idleTimerArmed = true;
+    const stopIdleTimer = (): void => {
+      if (idleTimerArmed) clearTimeout(idleTimer);
+      idleTimerArmed = false;
+    };
     const resetIdleTimer = (): void => {
+      if (!idleTimerArmed) return;
       clearTimeout(idleTimer);
       idleTimer = setTimeout(() => socket.destroy(), SOCKET_IDLE_TIMEOUT_MS);
     };
-    socket.on("close", () => clearTimeout(idleTimer));
+    socket.on("close", () => stopIdleTimer());
     socket.on("error", () => socket.destroy());
   });
 
