@@ -18,8 +18,6 @@ import { useSDK } from "@/plugins/sdk";
 type LoadState = "idle" | "loading" | "ready" | "error";
 type ListenerHandle = { stop: () => void };
 
-const RECONCILIATION_INTERVAL_MS = 5_000;
-
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
@@ -40,11 +38,13 @@ export const useDomainGraph = () => {
   const lastRefreshAt = ref<string>();
   const state = ref<LoadState>("idle");
   const error = ref<string>();
+  // Sitemap events only count pending changes; the graph rebuilds on manual
+  // sync (or discrete project/scope/page transitions), never per event.
+  const pendingChanges = ref(0);
   const listeners: ListenerHandle[] = [];
   let sitemapSubscription: ListenerHandle | undefined;
   let subscribedScopeId: string | undefined;
   let refreshTimer: number | undefined;
-  let reconciliationTimer: number | undefined;
   let refreshGeneration = 0;
   let revision: string | undefined;
   let running = false;
@@ -95,10 +95,16 @@ export const useDomainGraph = () => {
     stopSitemapSubscription();
     sitemapSubscription = subscribeToSitemapDomains(sdk, {
       scopeId,
-      onChange: scheduleRefresh,
+      onChange: () => {
+        pendingChanges.value += 1;
+      },
       onError: (cause) => {
+        // Clear the marker so the next refresh re-subscribes — with no
+        // reconciliation interval left, a dead subscription would
+        // otherwise undercount forever.
+        subscribedScopeId = undefined;
         sdk.log.warn(
-          "GraphX Sitemap subscription disconnected; reconciliation remains active.",
+          "GraphX Sitemap subscription disconnected; sync counter may undercount.",
           cause,
         );
       },
@@ -154,6 +160,7 @@ export const useDomainGraph = () => {
         revision = nextRevision;
       }
       lastRefreshAt.value = nextSnapshot.generatedAt;
+      pendingChanges.value = 0;
       state.value = "ready";
     } catch (cause: unknown) {
       if (generation !== refreshGeneration) return;
@@ -178,16 +185,13 @@ export const useDomainGraph = () => {
     project.value = undefined;
     snapshot.value = undefined;
     lastRefreshAt.value = undefined;
+    pendingChanges.value = 0;
     state.value = "idle";
     error.value = undefined;
     for (const listener of listeners.splice(0)) listener.stop();
     stopSitemapSubscription();
     if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
     refreshTimer = undefined;
-    if (reconciliationTimer !== undefined) {
-      window.clearInterval(reconciliationTimer);
-    }
-    reconciliationTimer = undefined;
   };
 
   const start = (): void => {
@@ -209,10 +213,6 @@ export const useDomainGraph = () => {
         scheduleRefresh();
       }),
     );
-    reconciliationTimer = window.setInterval(
-      scheduleRefresh,
-      RECONCILIATION_INTERVAL_MS,
-    );
     void refreshGraph(true);
   };
 
@@ -230,6 +230,7 @@ export const useDomainGraph = () => {
     error,
     isActive,
     lastRefreshAt,
+    pendingChanges,
     project,
     refresh,
     scopes,

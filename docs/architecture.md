@@ -66,7 +66,7 @@ Further data owned by GraphX, such as annotations or observations not represente
 `packages/frontend/src/features/domainGraph` is divided into four layers:
 
 - `adapters`: typed Caido Sitemap query and subscription integration.
-- `composables`: lifecycle, scope selection, race cancellation, burst debouncing, and reconciliation.
+- `composables`: lifecycle, scope selection, race cancellation, burst debouncing, and pending-change tracking.
 - `components`: page and canvas presentation.
 - `rendering`: one Graphology model, ForceAtlas2 layout, a capability-selected Sigma/WebGL or Canvas 2D renderer, interaction handling, theme handling, and resource disposal.
 
@@ -93,7 +93,7 @@ DNS resolution, reachability, HTTP liveness, source maps, and source-host relati
 
 ## Live-update guarantees
 
-GraphX subscribes to Caido's typed Sitemap create, update, and delete streams for the selected scope. Domain events are collapsed into one refresh after 250 ms. A five-second reconciliation query runs only while the GraphX route is active, covering subscription interruption or an event arriving during startup. Snapshot revision comparison prevents unchanged reconciliations from restarting layout.
+GraphX subscribes to Caido's typed Sitemap create, update, and delete streams for the selected scope. Sitemap events never trigger a rebuild: they only increment a pending-change counter, surfaced as a badge on the toolbar Sync button. The graph rebuilds on manual Sync, on GraphX route activation, and on project or scope changes — a full refresh reads all root entries, rebuilds the snapshot, and restringifies it for the revision check, which is far too expensive to run per sitemap event during active hunting. Snapshot revision comparison prevents an unchanged rebuild from restarting layout.
 
 Every asynchronous refresh has a generation token. A response from an old project or scope is discarded and subscriptions are replaced when context changes. Caido retains plugin page bodies during navigation, so route activity explicitly starts and stops ingestion in addition to Vue's unmount cleanup. Timers, iterators, observers, the layout worker, and active renderer resources are released when GraphX becomes inactive.
 

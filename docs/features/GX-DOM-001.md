@@ -18,7 +18,7 @@ Display all domains and subdomains observed in the current program's Caido Sitem
 | GX-DOM-004 | Deduplicate equivalent Sitemap roots while retaining their Caido entry IDs. | `shared/src/domainGraph/build.ts` | `build.test.ts`. |
 | GX-DOM-005 | Connect each node only to its nearest present DNS-suffix parent, and never synthesize an out-of-scope parent. | `shared/src/domainGraph/build.ts` | `build.test.ts`. |
 | GX-DOM-006 | Render nodes as an organic force graph with pan, zoom, drag, select, hover, and neighborhood emphasis. | Graphology model, renderer factory, Sigma/WebGL primary, Canvas 2D fallback | Production build and installed UI smoke test in a WebGL-disabled browser. |
-| GX-DOM-007 | Update from live Sitemap events and recover from missed events. | `caidoSitemap.ts`, `useDomainGraph.ts` | Subscription cleanup review; five-second reconciliation; installed UI smoke test. |
+| GX-DOM-007 | Track live Sitemap events as pending changes without rebuilding per event. | `caidoSitemap.ts`, `useDomainGraph.ts` | Subscription cleanup review; sync-badge smoke test. |
 | GX-DOM-008 | Prevent stale project or scope responses from crossing context boundaries. | `useDomainGraph.ts`, backend project event | Generation-token and lifecycle review. |
 | GX-DOM-009 | Distinguish Sitemap-observed nodes from in-scope structural parents without claiming DNS status. | shared types, page legend and selection panel | Model tests and installed UI inspection. |
 | GX-DOM-010 | Generate no target traffic. | Read-only Caido APIs only | Caido traffic comparison during smoke test. |

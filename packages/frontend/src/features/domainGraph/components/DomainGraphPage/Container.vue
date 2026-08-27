@@ -25,6 +25,7 @@ const {
   error,
   isActive,
   lastRefreshAt,
+  pendingChanges,
   project,
   refresh,
   scopes,
@@ -375,14 +376,27 @@ const copyReconEndpoints = (): void => {
           title="JS assets"
           @click="showAssets = !showAssets"
         />
-        <Button
-          icon="fas fa-sync-alt"
-          severity="secondary"
-          text
-          :loading="state === 'loading'"
-          aria-label="Refresh domain graph"
-          @click="refresh"
-        />
+        <span class="graphx-sync">
+          <Button
+            icon="fas fa-sync-alt"
+            severity="secondary"
+            text
+            :loading="state === 'loading'"
+            aria-label="Sync domain graph"
+            :title="
+              pendingChanges > 0
+                ? `Sync — ${pendingChanges} sitemap change(s) pending`
+                : 'Sync domain graph'
+            "
+            @click="refresh"
+          />
+          <span
+            v-if="pendingChanges > 0"
+            class="graphx-sync-badge"
+            aria-hidden="true"
+            >{{ pendingChanges > 99 ? "99+" : pendingChanges }}</span
+          >
+        </span>
       </div>
 
       <dl v-if="snapshot" class="graphx-stats" aria-label="Graph summary">

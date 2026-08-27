@@ -55,6 +55,29 @@
   background: var(--p-surface-0);
 }
 
+.graphx-sync {
+  display: inline-flex;
+  position: relative;
+}
+
+.graphx-sync-badge {
+  align-items: center;
+  background: var(--p-primary-color);
+  border-radius: 999px;
+  color: var(--p-primary-contrast-color);
+  display: inline-flex;
+  font-size: 0.6rem;
+  font-weight: 700;
+  justify-content: center;
+  line-height: 1;
+  min-width: 1rem;
+  padding: 0.2rem 0.3rem;
+  pointer-events: none;
+  position: absolute;
+  right: -0.2rem;
+  top: -0.2rem;
+}
+
 .graphx-identity,
 .graphx-controls,
 .graphx-stats,

@@ -31,8 +31,8 @@ host without leaving Caido.
   with filter `(req.path.like:"%.js" or req.path.like:"%.mjs" or req.path.like:"%.map") and resp.code.lt:400 and resp.raw.ncont:"ontent-Type: text/html"`,
   grouped by host client-side. No per-host count fan-out.
 - A `requestCount` probe on the same filter returns a `snapshot` token; the
-  full sweep only re-runs when the token changes (checked on each graph
-  refresh tick and the 5 s reconciliation).
+  full sweep only re-runs when the token changes (checked on each manual
+  graph sync).
 
 ## Semantics
 
