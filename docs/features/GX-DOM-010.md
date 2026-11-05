@@ -5,12 +5,11 @@ Release target: GraphX 0.3.x
 
 ## Operator intent
 
-Frontend recon should not stop at "this host ships these bundles". GraphX
-reads the *contents* of observed JavaScript responses (passively — Caido's
-local data only) and extracts the attack surface the client reveals:
-endpoints, GraphQL operations, storage keys, postMessage usage, and
-dangerous DOM sinks. The agent queries this over the agent API; the human
-sees it in the domain selection panel.
+JS recon starts with the *contents* of observed JavaScript responses in
+Caido's local data and extracts endpoints, GraphQL operations, storage keys,
+postMessage usage, and dangerous DOM sinks. Running Scan/Rescan in the domain
+selection panel or calling `GET /js-recon` can also send in-scope requests for
+referenced source maps that were not observed in traffic.
 
 ## Semantics
 
@@ -85,7 +84,7 @@ sees it in the domain selection panel.
 | ID | Requirement | Implementation | Acceptance evidence |
 | --- | --- | --- | --- |
 | R1 | Pure, tested extraction | `shared/src/jsRecon.ts` | `jsRecon.test.ts` (13 tests) |
-| R2 | Uncapped passive body sweep | `services/jsRecon.ts` | live: mclass.amplify.com, 92 bundles + 8 maps, untruncated (2026-08-26) |
+| R2 | Uncapped local body sweep with in-scope fetches for missing referenced maps | `services/jsRecon.ts` | live: mclass.amplify.com, 92 bundles + 8 maps, untruncated (2026-08-26) |
 | R3 | Per-project persistence | `repositories/jsRecon.ts` | live: row in plugin `data.db` `js_recon` (2026-08-26) |
 | R4 | Agent route | `GET /js-recon` in `agentapi/routes.ts` | live: `curl :8771/js-recon?host=mclass.amplify.com&scope=1` → 200 (2026-08-26) |
 | R5 | UI panel | `DomainGraphPage/Container.vue` | vue-tsc; build |

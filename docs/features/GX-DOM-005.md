@@ -63,10 +63,10 @@ host without leaving Caido.
 | GX-DOM-503 | Correct bundle/map classification incl. `.js.map` and `.json` exclusion. | `assets/domainAssets.ts` | `domainAssets.test.ts` (5 tests). |
 | GX-DOM-504 | Toggle mutes JS-less hosts and suffixes counts, on both renderers. | sigma `nodeReducer`, canvas `draw()` | Harness screenshot diff; installed UI inspection. |
 | GX-DOM-505 | Per-host bundle list with map badge, status, copy URLs. | `DomainGraphPage` selection panel | Harness DOM assertions; installed UI inspection. |
-| GX-DOM-506 | Lifecycle: reload on scope change and refresh ticks; release on exit. | `useDomainAssets` | Composable review; navigation smoke test. |
+| GX-DOM-506 | Lifecycle: reload on scope change and manual graph sync; release on exit. | `useDomainAssets` | Composable review; navigation smoke test. |
 
 ## Not part of this increment
 
-- Probing for unrequested `.map` files (generates target traffic).
-- Response-body `sourceMappingURL` analysis (request meta carries no body).
+- Probing for unrequested `.map` files (generates target traffic); added separately for on-demand JS recon in GX-DOM-010.
+- Response-body `sourceMappingURL` analysis (request meta carries no body); added separately in GX-DOM-010.
 - Drill-down into HTTP History from an asset row.

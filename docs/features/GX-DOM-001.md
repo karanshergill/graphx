@@ -6,7 +6,7 @@ Release target: GraphX 0.1.0
 
 ## Operator intent
 
-Display all domains and subdomains observed in the current program's Caido Sitemap, filter them through a selectable program scope, and show their parent-domain relationships in an interactive Obsidian-style graph. The implementation must remain modular and update during an active hunt without generating target traffic.
+Display all domains and subdomains observed in the current program's Caido Sitemap, filter them through a selectable program scope, and show their parent-domain relationships in an interactive Obsidian-style graph. Domain-graph ingestion and rendering must remain modular and update during an active hunt without generating target traffic; on-demand JS recon is a separate feature (GX-DOM-010).
 
 ## Requirements ledger
 
@@ -21,7 +21,7 @@ Display all domains and subdomains observed in the current program's Caido Sitem
 | GX-DOM-007 | Track live Sitemap events as pending changes without rebuilding per event. | `caidoSitemap.ts`, `useDomainGraph.ts` | Subscription cleanup review; sync-badge smoke test. |
 | GX-DOM-008 | Prevent stale project or scope responses from crossing context boundaries. | `useDomainGraph.ts`, backend project event | Generation-token and lifecycle review. |
 | GX-DOM-009 | Distinguish Sitemap-observed nodes from in-scope structural parents without claiming DNS status. | shared types, page legend and selection panel | Model tests and installed UI inspection. |
-| GX-DOM-010 | Generate no target traffic. | Read-only Caido APIs only | Caido traffic comparison during smoke test. |
+| GX-DOM-010 | Generate no target traffic from domain-graph ingestion or rendering. | Read-only Caido APIs only | Caido traffic comparison during smoke test. |
 | GX-DOM-011 | Release browser, worker, observer, iterator, timer, and Caido-listener resources on route exit and unmount. | route activity bridge, renderer, canvas component, composable, adapter | Lifecycle review and navigation smoke test. |
 | GX-DOM-012 | Keep Caido access, orchestration, graph rules, components, and rendering replaceable. | feature and workspace boundaries | Architecture review, `knip`, dependency-direction review. |
 | GX-DOM-013 | Follow Caido's light and dark modes, including live changes, without leaking global CSS or retaining an inactive observer. | scoped theme bridge, CSS variables, renderer palette observers | Theme unit tests and installed dark/light/route-exit smoke test. |

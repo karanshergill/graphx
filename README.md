@@ -12,8 +12,8 @@ GraphX is a native Caido extension for exploring relationships in project data. 
 - **JS asset awareness** — per-host bundle and source-map inventory from observed traffic, with first/last-seen timestamps.
 - **API map drill-down** — a Swagger-like route map per host, built sitemap-first from your own traffic.
 - **Search and keyboard-first navigation** — `/` or `Ctrl/Cmd+K` to jump to any domain.
-- **Agent API** — read-only JSON on `127.0.0.1:8771` so automation can query the same estate model.
-- **Passive** — GraphX never sends traffic to targets; it reads Caido's local data only.
+- **Agent API** — GET + JSON on `127.0.0.1:8771` so automation can query the estate model.
+- **On-demand JS recon** — scans observed JavaScript bodies and source maps; it may request referenced, previously unobserved source maps from in-scope target hosts.
 
 ## Current behavior
 
@@ -24,8 +24,8 @@ GraphX is a native Caido extension for exploring relationships in project data. 
 - Adds a missing suffix only when that structural parent is itself in scope.
 - Renders an Obsidian-style layout with Graphology and a ForceAtlas2 worker. It uses Sigma when WebGL is available and an interactive Canvas 2D renderer otherwise.
 - Mirrors Caido's active light or dark mode across the page, controls, graph palette, and renderer without requiring a reload.
-- Updates from Sitemap subscriptions, debounces bursts, and reconciles every five seconds while the GraphX page is active.
-- Reconciles project and scope changes without retaining data from the previous project.
+- Counts Sitemap events as pending changes on the Sync badge; those events do not rebuild the graph, and there is no periodic reconciliation.
+- Refreshes on manual Sync, page entry, and project or scope changes without retaining data from the previous project.
 - Stops subscriptions, timers, layout workers, and rendering when the operator leaves GraphX, then resumes from a fresh project snapshot on return.
 - Marks domains — alone or with their whole subdomain subtree — from a right-click context menu or the keyboard (`M` / `Shift+M`). Marks persist per Caido project in the plugin's SQLite database and render in a distinct marker color.
 - Isolates marked domains with their ancestor chains via the **Marked only** toolbar toggle.
@@ -33,7 +33,6 @@ GraphX is a native Caido extension for exploring relationships in project data. 
 - Associates observed JavaScript bundles and source maps with each domain from local HTTP traffic (HTTPQL `req.path.like` sweep, grouped per host). The **JS assets** toggle mutes hosts without bundles and suffixes bundle counts onto labels; selecting a host lists its bundles with status, request count, map pairing, and a copy-URLs action.
 - Searches domains and subdomains from the toolbar (`/` or `Ctrl/Cmd+K` to focus): ranked exact/prefix/substring matches in a live dropdown, and picking one selects the node and centers the camera on it.
 - Drills into any domain's API map: `Enter` (or **Open API map**) swaps the canvas to a tree-laid-out route map of that host — segment trie with status-colored endpoints sized by traffic — from the same sitemap-first pipeline as the agent API's `/api-map`. `← Domains` or `Escape` returns.
-- Sends no requests to target hosts.
 
 An “observed host” means a domain root exists in the Caido Sitemap. A “structural parent” is an in-scope suffix derived only to preserve the relationship chain. Neither state currently means DNS-resolved or DNS-unresolved.
 
@@ -43,7 +42,7 @@ Install `dist/plugin_package.zip` from Caido's Plugins page, then select **Graph
 
 ## Agent API
 
-The backend plugin serves a read-only JSON API on `127.0.0.1:8771` (loopback only, no auth) so agents can query GraphX like they query Caido:
+The backend plugin serves a GET + JSON API on `127.0.0.1:8771` (loopback only, no auth). Most routes read local Caido or plugin data; `/js-recon` also saves findings and can send in-scope requests for missing source maps referenced by observed bundles:
 
 ```bash
 curl -s 127.0.0.1:8771/health                  # liveness + version
@@ -52,10 +51,10 @@ curl -s "127.0.0.1:8771/domains?scope=Example" # full domain graph JSON
 curl -s "127.0.0.1:8771/assets?scope=Example"  # per-host JS bundle/map groupings
 curl -s "127.0.0.1:8771/brief?scope=Example"   # composite estate brief (session start)
 curl -s "127.0.0.1:8771/api-map?host=api.example.com"  # per-host route map (Swagger-like templates)
-curl -s "127.0.0.1:8771/js-recon?host=app.example.com" # static recon over observed JS bodies (endpoints, GraphQL ops, storage keys, sinks)
+curl -s "127.0.0.1:8771/js-recon?host=app.example.com" # scan JS bodies; may fetch missing in-scope source maps
 ```
 
-`?scope=` takes a scope id or name and may be omitted when only one scope exists. All routes are GET + JSON; errors are `{ "error": string }`. See `docs/features/GX-DOM-007.md`.
+`?scope=` takes a scope id or name and may be omitted when only one scope exists. All routes are GET + JSON; errors are `{ "error": string }`. See `docs/features/GX-DOM-007.md` and `docs/features/GX-DOM-010.md`.
 
 ## Development
 
