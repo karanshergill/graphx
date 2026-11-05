@@ -2,6 +2,15 @@ export type ApiMapRequest = {
   path: string;
   query: string;
   method: string;
+  requestId?: string;
+  statusCode?: number;
+  seenAt?: string;
+};
+
+export type ApiRouteEvidence = {
+  requestId: string;
+  method: string;
+  path: string;
   statusCode?: number;
   seenAt?: string;
 };
@@ -14,6 +23,7 @@ export type ApiRoute = {
   methods: Record<string, number>;
   statuses: Record<string, number>;
   queryKeys: readonly string[];
+  evidence: readonly ApiRouteEvidence[];
   firstSeen?: string;
   lastSeen?: string;
 };
@@ -170,6 +180,56 @@ const sortedRecord = (map: Map<string, number>): Record<string, number> =>
     [...map.entries()].sort(([left], [right]) => left.localeCompare(right)),
   );
 
+const MAX_ROUTE_EVIDENCE = 8;
+
+// Newest first, then a total ordering independent of the request sweep order.
+const compareEvidence = (
+  left: ApiRouteEvidence,
+  right: ApiRouteEvidence,
+): number => {
+  if (left.seenAt !== right.seenAt) {
+    if (left.seenAt === undefined) return 1;
+    if (right.seenAt === undefined) return -1;
+    return left.seenAt < right.seenAt ? 1 : -1;
+  }
+  if (left.method !== right.method) return left.method < right.method ? -1 : 1;
+  if (left.statusCode !== right.statusCode) {
+    if (left.statusCode === undefined) return -1;
+    if (right.statusCode === undefined) return 1;
+    return left.statusCode < right.statusCode ? -1 : 1;
+  }
+  if (left.requestId !== right.requestId)
+    return left.requestId < right.requestId ? -1 : 1;
+  if (left.path !== right.path) return left.path < right.path ? -1 : 1;
+  return 0;
+};
+
+const retainEvidence = (
+  evidence: ApiRouteEvidence[],
+  candidate: ApiRouteEvidence,
+): void => {
+  for (let i = 0; i < evidence.length; i++) {
+    const item = evidence[i]!;
+    if (
+      item.method !== candidate.method ||
+      item.statusCode !== candidate.statusCode
+    )
+      continue;
+    if (compareEvidence(candidate, item) < 0) evidence[i] = candidate;
+    return;
+  }
+  if (evidence.length < MAX_ROUTE_EVIDENCE) {
+    evidence.push(candidate);
+    return;
+  }
+  let worst = 0;
+  for (let i = 1; i < evidence.length; i++) {
+    if (compareEvidence(evidence[worst]!, evidence[i]!) < 0) worst = i;
+  }
+  if (compareEvidence(candidate, evidence[worst]!) < 0)
+    evidence[worst] = candidate;
+};
+
 export const buildApiMap = (
   sitemapPaths: readonly string[],
   requests: ApiMapRequest[],
@@ -183,6 +243,7 @@ export const buildApiMap = (
     methods: Map<string, number>;
     statuses: Map<string, number>;
     queryKeySet: Set<string>;
+    evidence: ApiRouteEvidence[];
     firstSeen?: string;
     lastSeen?: string;
   };
@@ -198,6 +259,7 @@ export const buildApiMap = (
         methods: new Map(),
         statuses: new Map(),
         queryKeySet: new Set(),
+        evidence: [],
       };
       aggregates.set(template, aggregate);
     }
@@ -222,6 +284,17 @@ export const buildApiMap = (
     if (request.statusCode !== undefined) {
       const status = String(request.statusCode);
       aggregate.statuses.set(status, (aggregate.statuses.get(status) ?? 0) + 1);
+    }
+    if (request.requestId !== undefined && request.requestId.length > 0) {
+      const candidate: ApiRouteEvidence = {
+        requestId: request.requestId,
+        method,
+        path: request.path,
+      };
+      if (request.statusCode !== undefined)
+        candidate.statusCode = request.statusCode;
+      if (request.seenAt !== undefined) candidate.seenAt = request.seenAt;
+      retainEvidence(aggregate.evidence, candidate);
     }
     for (const key2 of queryKeysOf(request.query))
       aggregate.queryKeySet.add(key2);
@@ -249,6 +322,7 @@ export const buildApiMap = (
         methods: sortedRecord(aggregate.methods),
         statuses: sortedRecord(aggregate.statuses),
         queryKeys: [...aggregate.queryKeySet].sort(),
+        evidence: aggregate.evidence.sort(compareEvidence),
       };
       if (aggregate.firstSeen !== undefined)
         route.firstSeen = aggregate.firstSeen;

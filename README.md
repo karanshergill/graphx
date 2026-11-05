@@ -10,10 +10,10 @@ GraphX is a native Caido extension for exploring relationships in project data. 
 - **Persistent marks** — flag interesting domains (with or without their subdomain subtrees); marks survive restarts per project.
 - **Connection paths** — highlight the full path between marked domains to see how surface connects.
 - **JS asset awareness** — per-host bundle and source-map inventory from observed traffic, with first/last-seen timestamps.
-- **API map drill-down** — a Swagger-like route map per host, built sitemap-first from your own traffic.
+- **API map drill-down** — a Swagger-like route map per host, built sitemap-first from your own traffic, with captured request samples for each route.
 - **Search and keyboard-first navigation** — `/` or `Ctrl/Cmd+K` to jump to any domain.
 - **Agent API** — GET + JSON on `127.0.0.1:8771` so automation can query the estate model.
-- **On-demand JS recon** — scans observed JavaScript bodies and source maps; it may request referenced, previously unobserved source maps from in-scope target hosts.
+- **On-demand JS recon** — scans observed JavaScript bodies and source maps, retaining a source location for each lead; it may request referenced, previously unobserved source maps from in-scope target hosts.
 
 ## Current behavior
 
@@ -33,12 +33,15 @@ GraphX is a native Caido extension for exploring relationships in project data. 
 - Associates observed JavaScript bundles and source maps with each domain from local HTTP traffic (HTTPQL `req.path.like` sweep, grouped per host). The **JS assets** toggle mutes hosts without bundles and suffixes bundle counts onto labels; selecting a host lists its bundles with status, request count, map pairing, and a copy-URLs action.
 - Searches domains and subdomains from the toolbar (`/` or `Ctrl/Cmd+K` to focus): ranked exact/prefix/substring matches in a live dropdown, and picking one selects the node and centers the camera on it.
 - Drills into any domain's API map: `Enter` (or **Open API map**) swaps the canvas to a tree-laid-out route map of that host — segment trie with status-colored endpoints sized by traffic — from the same sitemap-first pipeline as the agent API's `/api-map`. `← Domains` or `Escape` returns.
+- Locates sampled route requests and captured JS sources in Caido HTTP History, or opens an unsent Replay draft from the captured request ID. Sitemap-only routes and actively fetched maps have no captured request to open.
 
 An “observed host” means a domain root exists in the Caido Sitemap. A “structural parent” is an in-scope suffix derived only to preserve the relationship chain. Neither state currently means DNS-resolved or DNS-unresolved.
 
 ## Use in Caido
 
 Install `dist/plugin_package.zip` from Caido's Plugins page, then select **GraphX** in the sidebar and choose a program scope. The graph always displays the complete scope at every depth. Use the toolbar search box (`/` or `Ctrl/Cmd+K`) to find any domain and jump to it. Drag nodes to pin the working layout, pan or zoom the canvas, and select a node to isolate its immediate neighborhood. Right-click the selected node (or press `M`; `Shift+M` includes its subdomains) to mark it — marks persist across restarts within the current project. The bookmark toolbar toggle shows only marked domains and their parent chains; the route toggle highlights the full connection path between marked domains; the file-code toggle fades hosts without observed JavaScript bundles and combines with the bookmark toggle into a joint emphasis. The graph is keyboard-focusable: use the arrow keys, Home/End, Escape, and `0` (fit view).
+
+Route details show up to eight representative captured requests (one per method/status combination). **History** locates the original request row; **Replay** creates and opens a draft without sending it. JS recon shows an asset or original source-map module and a 1-based line and column for each deduplicated lead, with the same pivots when a captured request exists.
 
 ## Agent API
 

@@ -239,7 +239,12 @@ const buildHostJsRecon = async (
     const text = await fetchBodyText(sdk, candidate.id);
     if (text === undefined) return;
     bundlesScanned += 1;
-    extractions.push(extractJsRecon(text));
+    extractions.push(
+      extractJsRecon(text, {
+        assetPath: candidate.key,
+        requestId: candidate.id,
+      }),
+    );
 
     const ref = findSourceMapRef(text);
     if (ref === undefined) return;
@@ -250,7 +255,10 @@ const buildHostJsRecon = async (
         const inline = Buffer.from(ref.slice(comma + 1), "base64").toString(
           "utf-8",
         );
-        const recon = extractSourceMapRecon(inline);
+        const recon = extractSourceMapRecon(inline, {
+          assetPath: candidate.key,
+          requestId: candidate.id,
+        });
         if (recon !== undefined) {
           sourceMapsInline.push(candidate.key);
           for (const module of recon.sources) sourceModules.add(module);
@@ -266,7 +274,10 @@ const buildHostJsRecon = async (
   await forEachBatch(mapCandidates.candidates, async (candidate) => {
     const text = await fetchBodyText(sdk, candidate.id);
     if (text === undefined) return;
-    const recon = extractSourceMapRecon(text);
+    const recon = extractSourceMapRecon(text, {
+      assetPath: candidate.key,
+      requestId: candidate.id,
+    });
     if (recon === undefined) return;
     sourceMaps.push(candidate.key);
     for (const module of recon.sources) sourceModules.add(module);
@@ -308,7 +319,9 @@ const buildHostJsRecon = async (
         }
         continue;
       }
-      const recon = extractSourceMapRecon(body.toText());
+      // A live fetch has no captured Caido request, even when a bundle led
+      // us to its URL.
+      const recon = extractSourceMapRecon(body.toText(), { assetPath: path });
       if (recon === undefined) continue;
       sourceMapsFetched.push(path);
       for (const module of recon.sources) sourceModules.add(module);

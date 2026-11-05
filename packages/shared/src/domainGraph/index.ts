@@ -11,6 +11,7 @@ export {
   segmentParamKind,
   type ApiMapRequest,
   type ApiRoute,
+  type ApiRouteEvidence,
   type SegmentParamKind,
 } from "./apiMap";
 export { buildDomainGraph } from "./build";

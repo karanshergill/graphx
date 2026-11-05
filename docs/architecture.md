@@ -74,6 +74,8 @@ The frontend theme bridge mirrors Caido's document-level `data-mode` attribute o
 
 Both renderers consume only the view model (`DomainGraphView`); neither knows how Caido stores domains. The renderer factory prefers Sigma and selects Canvas 2D when WebGL is unavailable, so locked-down or software-rendered operator environments still display the graph without changing the data adapter or domain model.
 
+Route templates retain up to eight representative captured request IDs, chosen by method/status and recency; JS recon retains one source location per distinct lead, preferring original source-map modules over bundles. The frontend locates captured IDs in Caido HTTP History or creates an unsent Replay draft. Live-fetched maps have no captured Caido request ID, so their source locations have no History/Replay pivot.
+
 ## Relationship semantics
 
 For an observed `api.stage.example.com`, GraphX walks DNS suffixes:

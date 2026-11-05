@@ -1,3 +1,24 @@
+export type JsReconEvidence = {
+  kind:
+    | "endpoint"
+    | "graphql-operation"
+    | "storage-key"
+    | "sink"
+    | "post-message-handler"
+    | "post-message-call";
+  value: string;
+  assetPath?: string;
+  sourcePath?: string;
+  requestId?: string;
+  line: number;
+  column: number;
+};
+
+export type JsReconOrigin = Pick<
+  JsReconEvidence,
+  "assetPath" | "sourcePath" | "requestId"
+>;
+
 export type JsReconExtraction = {
   endpoints: string[];
   graphqlOperations: string[];
@@ -5,6 +26,7 @@ export type JsReconExtraction = {
   postMessageHandlers: number;
   postMessageCalls: number;
   sinks: Record<string, number>;
+  evidence: JsReconEvidence[];
 };
 
 export type JsReconFindings = JsReconExtraction & {
@@ -58,8 +80,49 @@ const SINK_PATTERNS: Record<string, RegExp> = {
   outerHTML: /\.outerHTML\s*=/g,
 };
 
-const countMatches = (source: string, pattern: RegExp): number =>
-  source.match(pattern)?.length ?? 0;
+// Prefer original modules to bundled code, then choose a stable representative
+// independent of candidate fetch order and source-map iteration order.
+const compareText = (
+  left: string | undefined,
+  right: string | undefined,
+): number => {
+  if (left === right) return 0;
+  if (left === undefined) return 1;
+  if (right === undefined) return -1;
+  return left < right ? -1 : 1;
+};
+
+const compareEvidence = (
+  left: JsReconEvidence,
+  right: JsReconEvidence,
+): number =>
+  Number(right.sourcePath !== undefined) -
+    Number(left.sourcePath !== undefined) ||
+  compareText(left.sourcePath, right.sourcePath) ||
+  compareText(left.assetPath, right.assetPath) ||
+  compareText(left.requestId, right.requestId) ||
+  left.line - right.line ||
+  left.column - right.column;
+
+const addEvidence = (
+  representatives: Map<string, JsReconEvidence>,
+  evidence: JsReconEvidence,
+): void => {
+  const key = `${evidence.kind}\0${evidence.value}`;
+  const previous = representatives.get(key);
+  if (previous === undefined || compareEvidence(evidence, previous) < 0) {
+    representatives.set(key, evidence);
+  }
+};
+
+const sortedEvidence = (
+  representatives: Map<string, JsReconEvidence>,
+): JsReconEvidence[] =>
+  [...representatives.values()].sort(
+    (left, right) =>
+      compareText(left.kind, right.kind) ||
+      compareText(left.value, right.value),
+  );
 
 // Endpoints with no recon value: static assets, bundler dev-server internals,
 // and XML-namespace/telemetry hosts. Deliberately kept: .json/.xml/.txt paths,
@@ -106,10 +169,47 @@ const shouldDropEndpoint = (value: string): boolean => {
   return false;
 };
 
-export const extractJsRecon = (source: string): JsReconExtraction => {
+export const extractJsRecon = (
+  source: string,
+  origin: JsReconOrigin = {},
+): JsReconExtraction => {
   const endpoints = new Set<string>();
   const graphqlOperations = new Set<string>();
   const storageKeys = new Set<string>();
+  const representatives = new Map<string, JsReconEvidence>();
+  let lineStarts: number[] | undefined;
+
+  const record = (
+    kind: JsReconEvidence["kind"],
+    value: string,
+    index: number,
+  ): void => {
+    // Each pattern is traversed in source order, so the first occurrence is
+    // the representative for a kind/value within this one asset.
+    const key = `${kind}\0${value}`;
+    if (representatives.has(key)) return;
+    if (lineStarts === undefined) {
+      lineStarts = [0];
+      for (let position = 0; position < source.length; position += 1) {
+        if (source.charCodeAt(position) === 10) lineStarts.push(position + 1);
+      }
+    }
+    let low = 0;
+    let high = lineStarts.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (lineStarts[middle]! <= index) low = middle + 1;
+      else high = middle;
+    }
+    const lineIndex = low - 1;
+    representatives.set(key, {
+      kind,
+      value,
+      ...origin,
+      line: lineIndex + 1,
+      column: index - lineStarts[lineIndex]! + 1,
+    });
+  };
 
   for (const match of source.matchAll(STRING_LITERAL)) {
     const value = match[1] ?? match[2] ?? match[3] ?? "";
@@ -120,36 +220,64 @@ export const extractJsRecon = (source: string): JsReconExtraction => {
     // parameter positions stay visible.
     const testable =
       match[3] !== undefined ? value.replace(TEMPLATE_EXPR, "") : value;
-    if (PATH_LIKE.test(testable) && !testable.startsWith("//")) {
+    if (
+      (PATH_LIKE.test(testable) && !testable.startsWith("//")) ||
+      ABSOLUTE_URL.test(testable)
+    ) {
       endpoints.add(value);
-    } else if (ABSOLUTE_URL.test(testable)) {
-      endpoints.add(value);
+      record("endpoint", value, match.index + 1);
     }
   }
 
   for (const match of source.matchAll(GRAPHQL_OPERATION)) {
     const operation = match[2];
-    if (operation !== undefined) graphqlOperations.add(operation);
+    if (operation !== undefined) {
+      graphqlOperations.add(operation);
+      record("graphql-operation", operation, match.index);
+    }
   }
 
   for (const match of source.matchAll(STORAGE_ACCESS)) {
     const key = match[1];
-    if (key !== undefined) storageKeys.add(key);
+    if (key !== undefined) {
+      storageKeys.add(key);
+      record(
+        "storage-key",
+        key,
+        match.index + match[0].length - key.length - 1,
+      );
+    }
   }
 
   const sinks: Record<string, number> = {};
   for (const [sink, pattern] of Object.entries(SINK_PATTERNS)) {
-    const count = countMatches(source, pattern);
+    let count = 0;
+    for (const match of source.matchAll(pattern)) {
+      count += 1;
+      record("sink", sink, match.index);
+    }
     if (count > 0) sinks[sink] = count;
+  }
+
+  let postMessageHandlers = 0;
+  for (const match of source.matchAll(MESSAGE_LISTENER)) {
+    postMessageHandlers += 1;
+    record("post-message-handler", "message", match.index);
+  }
+  let postMessageCalls = 0;
+  for (const match of source.matchAll(POST_MESSAGE_CALL)) {
+    postMessageCalls += 1;
+    record("post-message-call", "postMessage", match.index);
   }
 
   return {
     endpoints: [...endpoints].sort(),
     graphqlOperations: [...graphqlOperations].sort(),
     storageKeys: [...storageKeys].sort(),
-    postMessageHandlers: countMatches(source, MESSAGE_LISTENER),
-    postMessageCalls: countMatches(source, POST_MESSAGE_CALL),
+    postMessageHandlers,
+    postMessageCalls,
     sinks,
+    evidence: sortedEvidence(representatives),
   };
 };
 
@@ -160,6 +288,7 @@ export const mergeJsRecon = (
   const graphqlOperations = new Set<string>();
   const storageKeys = new Set<string>();
   const sinks = new Map<string, number>();
+  const representatives = new Map<string, JsReconEvidence>();
   let postMessageHandlers = 0;
   let postMessageCalls = 0;
 
@@ -177,6 +306,11 @@ export const mergeJsRecon = (
     for (const [sink, count] of Object.entries(extraction.sinks)) {
       sinks.set(sink, (sinks.get(sink) ?? 0) + count);
     }
+    for (const evidence of extraction.evidence) {
+      if (evidence.kind === "endpoint" && shouldDropEndpoint(evidence.value))
+        continue;
+      addEvidence(representatives, evidence);
+    }
   }
 
   return {
@@ -188,6 +322,7 @@ export const mergeJsRecon = (
     sinks: Object.fromEntries(
       [...sinks.entries()].sort(([left], [right]) => left.localeCompare(right)),
     ),
+    evidence: sortedEvidence(representatives),
   };
 };
 
@@ -200,6 +335,7 @@ export type SourceMapRecon = {
 
 export const extractSourceMapRecon = (
   text: string,
+  origin: JsReconOrigin = {},
 ): SourceMapRecon | undefined => {
   let parsed: unknown;
   try {
@@ -218,9 +354,17 @@ export const extractSourceMapRecon = (
 
   const extractions: JsReconExtraction[] = [];
   if (Array.isArray(candidate.sourcesContent)) {
-    for (const content of candidate.sourcesContent) {
+    for (const [index, content] of candidate.sourcesContent.entries()) {
       if (typeof content === "string" && content.length > 0) {
-        extractions.push(extractJsRecon(content));
+        const sourcePath = candidate.sources[index];
+        extractions.push(
+          extractJsRecon(content, {
+            ...origin,
+            ...(typeof sourcePath === "string" && sourcePath.length > 0
+              ? { sourcePath }
+              : {}),
+          }),
+        );
       }
     }
   }

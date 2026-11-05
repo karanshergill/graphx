@@ -20,6 +20,14 @@ referenced source maps that were not observed in traffic.
   trade-off. Quoted strings and template literals are both scanned; for
   template literals the `${...}` interpolations are preserved in the output
   (parameter positions stay visible, e.g. `${BASE_URL}/audio_upload_url`).
+- Each deduplicated endpoint, GraphQL operation, storage key, sink name, and
+  postMessage lead carries one representative `evidence[]` entry: kind/value,
+  1-based line/column in the JS body or source-map `sourcesContent`, asset path,
+  optional original module path, and a Caido request ID only for captured
+  bundle/map responses (inline maps use the bundle's ID). Original source
+  modules take priority over minified bundles; ties are stable across sweep
+  order. A live-fetched map has no captured ID, so it has no History/Replay
+  pivot.
 - The backend sweep (`services/jsRecon.ts`) pages the GraphQL `requests`
   connection (scope-pinned, case-insensitive host match including explicit
   ports, `%.js`/`%.mjs`, status < 400, newest first), dedupes by path+query
@@ -69,22 +77,25 @@ referenced source maps that were not observed in traffic.
 
 | Surface | Shape |
 | --- | --- |
-| `GET /js-recon?host=<hostname>&scope=<id\|name>&throttle=<ms>` | `{ project, scope, host, generatedAt, bundlesScanned, sourceMapsScanned, sourceMaps[], sourceMapsBlocked[], sourceMapsFetched[], sourceMapsInline[], sourceModules[], truncated, endpoints[], graphqlOperations[], storageKeys[], postMessageHandlers, postMessageCalls, sinks{} }` |
+| `GET /js-recon?host=<hostname>&scope=<id\|name>&throttle=<ms>` | `{ project, scope, host, generatedAt, bundlesScanned, sourceMapsScanned, sourceMaps[], sourceMapsBlocked[], sourceMapsFetched[], sourceMapsInline[], sourceModules[], truncated, endpoints[], graphqlOperations[], storageKeys[], postMessageHandlers, postMessageCalls, sinks{}, evidence[] }` |
 | Plugin API `getJsRecon(host, scopeId?, throttleMs?)` | `Result<JsReconFindings>`; sweeps + persists |
 
-- Selection panel gains a "JS recon" section: Scan/Rescan, throttle input
-  (ms between live map fetches), endpoint list (first 50 + copy-as-URLs),
-  GraphQL ops, storage keys, sink counts, postMessage counts, observed /
-  blocked / live-fetched / inline source-map lists, truncation notice.
+- Selection panel: Scan/Rescan, throttle input (ms between live map fetches),
+  representative lead list with source locations, copy-as-URLs for endpoints,
+  observed / blocked / live-fetched / inline source-map lists, and truncation
+  notice. For leads with a captured request ID, **History** scrolls to its
+  captured row for inspection; **Replay** opens an unsent request draft. The
+  list can expand beyond its first 50 entries.
 - Recon results are cached per host in the page and cleared on project/scope
-  change.
+  change. In-flight responses from an earlier context cannot repopulate it.
 
 ## Requirements ledger
 
 | ID | Requirement | Implementation | Acceptance evidence |
 | --- | --- | --- | --- |
-| R1 | Pure, tested extraction | `shared/src/jsRecon.ts` | `jsRecon.test.ts` (13 tests) |
+| R1 | Pure, tested extraction | `shared/src/jsRecon.ts` | `jsRecon.test.ts` (source locations, origins, and merge precedence) |
 | R2 | Uncapped local body sweep with in-scope fetches for missing referenced maps | `services/jsRecon.ts` | live: mclass.amplify.com, 92 bundles + 8 maps, untruncated (2026-08-26) |
 | R3 | Per-project persistence | `repositories/jsRecon.ts` | live: row in plugin `data.db` `js_recon` (2026-08-26) |
 | R4 | Agent route | `GET /js-recon` in `agentapi/routes.ts` | live: `curl :8771/js-recon?host=mclass.amplify.com&scope=1` → 200 (2026-08-26) |
 | R5 | UI panel | `DomainGraphPage/Container.vue` | vue-tsc; build |
+| R6 | Captured source provenance and native Caido pivots | `shared/src/jsRecon.ts`, `services/jsRecon.ts`, `DomainGraphPage/Container.vue` | Model tests for multiline positions, source-map priority and no fabricated live-map ID; typed frontend build. |

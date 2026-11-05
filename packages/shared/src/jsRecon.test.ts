@@ -143,6 +143,100 @@ describe("extractJsRecon", () => {
       "https://api.example.com/v2/items/${id}",
     ]);
   });
+
+  it("records every lead's first multiline bundle position and captured origin", () => {
+    const source = [
+      'fetch("/api/v1");',
+      '"query Viewer { user }";',
+      'localStorage.getItem("token");',
+      "el.innerHTML = user;",
+      'addEventListener("message", fn);',
+      "x.postMessage(v);",
+      'fetch("/api/v1");',
+    ].join("\n");
+    expect(
+      extractJsRecon(source, {
+        assetPath: "/assets/app.js?v=1",
+        requestId: "bundle-42",
+      }).evidence,
+    ).toEqual([
+      {
+        kind: "endpoint",
+        value: "/api/v1",
+        assetPath: "/assets/app.js?v=1",
+        requestId: "bundle-42",
+        line: 1,
+        column: 8,
+      },
+      {
+        kind: "graphql-operation",
+        value: "Viewer",
+        assetPath: "/assets/app.js?v=1",
+        requestId: "bundle-42",
+        line: 2,
+        column: 2,
+      },
+      {
+        kind: "post-message-call",
+        value: "postMessage",
+        assetPath: "/assets/app.js?v=1",
+        requestId: "bundle-42",
+        line: 6,
+        column: 1,
+      },
+      {
+        kind: "post-message-handler",
+        value: "message",
+        assetPath: "/assets/app.js?v=1",
+        requestId: "bundle-42",
+        line: 5,
+        column: 1,
+      },
+      {
+        kind: "sink",
+        value: "innerHTML",
+        assetPath: "/assets/app.js?v=1",
+        requestId: "bundle-42",
+        line: 4,
+        column: 3,
+      },
+      {
+        kind: "storage-key",
+        value: "token",
+        assetPath: "/assets/app.js?v=1",
+        requestId: "bundle-42",
+        line: 3,
+        column: 23,
+      },
+    ]);
+  });
+
+  it("records representatives for each sink name without changing counts", () => {
+    const result = extractJsRecon(
+      "eval(a); document.write(a); el.outerHTML = a; new Function(a); " +
+        "el.insertAdjacentHTML('beforeend', a); dangerouslySetInnerHTML;",
+    );
+    expect(result.sinks).toEqual({
+      dangerouslySetInnerHTML: 1,
+      "document.write": 1,
+      eval: 1,
+      insertAdjacentHTML: 1,
+      "new Function": 1,
+      outerHTML: 1,
+    });
+    expect(
+      result.evidence
+        .filter((evidence) => evidence.kind === "sink")
+        .map(({ value }) => value),
+    ).toEqual([
+      "dangerouslySetInnerHTML",
+      "document.write",
+      "eval",
+      "insertAdjacentHTML",
+      "new Function",
+      "outerHTML",
+    ]);
+  });
 });
 
 describe("mergeJsRecon", () => {
@@ -174,8 +268,46 @@ describe("mergeJsRecon", () => {
       postMessageHandlers: 0,
       postMessageCalls: 0,
       sinks: {},
+      evidence: [],
     };
     expect(mergeJsRecon([legacy]).endpoints).toEqual(["/api/a"]);
+    expect(mergeJsRecon([legacy]).evidence).toEqual([]);
+  });
+
+  it("prefers original modules, then stable source, request, and location", () => {
+    const bundle = extractJsRecon('fetch("/api/shared");', {
+      assetPath: "/app.js",
+      requestId: "bundle",
+    });
+    const later = extractJsRecon('\nfetch("/api/shared");', {
+      assetPath: "/app.js.map",
+      sourcePath: "webpack:///z.ts",
+      requestId: "map-z",
+    });
+    const earlier = extractJsRecon('fetch("/api/shared");', {
+      assetPath: "/app.js.map",
+      sourcePath: "webpack:///a.ts",
+      requestId: "map-a",
+    });
+    const expected = earlier.evidence[0];
+    expect(mergeJsRecon([bundle, later, earlier]).evidence).toEqual([expected]);
+    expect(mergeJsRecon([earlier, later, bundle]).evidence).toEqual([expected]);
+
+    const sameSource = extractJsRecon('\nfetch("/api/shared");', {
+      assetPath: "/app.js.map",
+      sourcePath: "webpack:///a.ts",
+      requestId: "map-a",
+    });
+    expect(mergeJsRecon([sameSource, earlier]).evidence).toEqual([expected]);
+
+    const lowerId = extractJsRecon('fetch("/api/shared");', {
+      assetPath: "/app.js.map",
+      sourcePath: "webpack:///a.ts",
+      requestId: "map-0",
+    });
+    expect(mergeJsRecon([earlier, lowerId]).evidence).toEqual([
+      lowerId.evidence[0],
+    ]);
   });
 });
 
@@ -200,6 +332,18 @@ describe("extractSourceMapRecon", () => {
     ]);
     expect(recon?.extraction.storageKeys).toEqual(["map_token"]);
     expect(recon?.extraction.graphqlOperations).toEqual(["MapOp"]);
+
+    const bundled = extractJsRecon('fetch("/api/users");', {
+      assetPath: "/app.js",
+      requestId: "bundle",
+    });
+    expect(mergeJsRecon([bundled, recon!.extraction]).evidence).toContainEqual({
+      kind: "endpoint",
+      value: "/api/users",
+      sourcePath: "webpack://app/./src/auth.ts",
+      line: 1,
+      column: 8,
+    });
   });
 
   it("skips null sourcesContent entries", () => {
@@ -223,6 +367,63 @@ describe("extractSourceMapRecon", () => {
     expect(extractSourceMapRecon("not json")).toBeUndefined();
     expect(extractSourceMapRecon('{"version":3}')).toBeUndefined();
     expect(extractSourceMapRecon('"just a string"')).toBeUndefined();
+  });
+
+  it("ties sourcesContent to its original module position and captured map", () => {
+    const map = JSON.stringify({
+      version: 3,
+      sources: ["src/skip.ts", "src/original.ts"],
+      sourcesContent: [
+        null,
+        'const ignored = 1;\nfetch("/api/original");\n"query Original { viewer }";',
+      ],
+    });
+    expect(
+      extractSourceMapRecon(map, {
+        assetPath: "/assets/app.js.map",
+        requestId: "map-43",
+      })?.extraction.evidence,
+    ).toEqual([
+      {
+        kind: "endpoint",
+        value: "/api/original",
+        assetPath: "/assets/app.js.map",
+        sourcePath: "src/original.ts",
+        requestId: "map-43",
+        line: 2,
+        column: 8,
+      },
+      {
+        kind: "graphql-operation",
+        value: "Original",
+        assetPath: "/assets/app.js.map",
+        sourcePath: "src/original.ts",
+        requestId: "map-43",
+        line: 3,
+        column: 2,
+      },
+    ]);
+  });
+
+  it("never invents a request ID for actively fetched maps", () => {
+    const map = JSON.stringify({
+      version: 3,
+      sources: ["src/api.ts"],
+      sourcesContent: ['fetch("/api/live");'],
+    });
+    expect(
+      extractSourceMapRecon(map, { assetPath: "/assets/app.js.map" })
+        ?.extraction.evidence,
+    ).toEqual([
+      {
+        kind: "endpoint",
+        value: "/api/live",
+        assetPath: "/assets/app.js.map",
+        sourcePath: "src/api.ts",
+        line: 1,
+        column: 8,
+      },
+    ]);
   });
 });
 

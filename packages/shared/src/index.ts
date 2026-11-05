@@ -14,7 +14,9 @@ export {
   mergeJsRecon,
   normalizeThrottleMs,
   type JsReconExtraction,
+  type JsReconEvidence,
   type JsReconFindings,
+  type JsReconOrigin,
   type SourceMapRecon,
 } from "./jsRecon";
 export type { ProjectContext } from "./project";

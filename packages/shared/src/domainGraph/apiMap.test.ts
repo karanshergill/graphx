@@ -44,6 +44,7 @@ describe("buildApiMap", () => {
       requests: 0,
       statuses: {},
       methods: {},
+      evidence: [],
     });
   });
 
@@ -94,6 +95,7 @@ describe("buildApiMap", () => {
     expect(route?.queryKeys).toEqual(["expand", "limit"]);
     expect(route?.firstSeen).toBe("2026-08-01T10:00:00Z");
     expect(route?.lastSeen).toBe("2026-08-02T10:00:00Z");
+    expect(route?.evidence).toEqual([]);
   });
 
   it("collapses by cardinality only above the threshold", () => {
@@ -125,6 +127,10 @@ describe("buildApiMap", () => {
       requests: 1,
       statuses: { "404": 1 },
     });
+    expect(
+      routes.find((route) => route.template === "/api/known")?.evidence,
+    ).toEqual([]);
+    expect(phantom?.evidence).toEqual([]);
   });
 
   it("does not collapse varying literals in different surroundings", () => {
@@ -138,6 +144,104 @@ describe("buildApiMap", () => {
       "/beta/blue",
       "/beta/red",
     ]);
+  });
+
+  it("retains captured GET 200 and GET 403 independently without inventing IDs", () => {
+    const routes = buildApiMap(
+      ["/api/users"],
+      [
+        req("/api/users", {
+          requestId: "ok",
+          statusCode: 200,
+          seenAt: "2026-08-01T10:00:00Z",
+        }),
+        req("/api/users", {
+          requestId: "forbidden",
+          statusCode: 403,
+          seenAt: "2026-08-02T10:00:00Z",
+        }),
+        req("/api/users", {
+          statusCode: 500,
+          seenAt: "2026-08-03T10:00:00Z",
+        }),
+      ],
+    );
+    expect(routes[0]?.evidence).toEqual([
+      {
+        requestId: "forbidden",
+        method: "GET",
+        path: "/api/users",
+        statusCode: 403,
+        seenAt: "2026-08-02T10:00:00Z",
+      },
+      {
+        requestId: "ok",
+        method: "GET",
+        path: "/api/users",
+        statusCode: 200,
+        seenAt: "2026-08-01T10:00:00Z",
+      },
+    ]);
+    expect(routes[0]?.requests).toBe(3);
+    expect(routes[0]?.statuses).toEqual({ "200": 1, "403": 1, "500": 1 });
+  });
+
+  it("chooses the newest captured request per method/status with stable ties", () => {
+    const requests = [
+      req("/api/items/1", {
+        requestId: "old",
+        statusCode: 200,
+        seenAt: "2026-08-01",
+      }),
+      req("/api/items/2", {
+        requestId: "z",
+        method: "get",
+        statusCode: 200,
+        seenAt: "2026-08-02",
+      }),
+      req("/api/items/3", {
+        requestId: "a",
+        statusCode: 200,
+        seenAt: "2026-08-02",
+      }),
+      req("/api/items/4", {
+        requestId: "created",
+        method: "POST",
+        statusCode: 200,
+      }),
+      req("/api/items/5", { requestId: "missing-status" }),
+    ];
+    const forward = buildApiMap(["/api/items/1"], requests);
+    const reversed = buildApiMap(["/api/items/1"], [...requests].reverse());
+    expect(forward).toEqual(reversed);
+    expect(forward[0]?.evidence.map(({ requestId }) => requestId)).toEqual([
+      "a",
+      "missing-status",
+      "created",
+    ]);
+    expect(forward[0]?.evidence[0]).toMatchObject({
+      method: "GET",
+      path: "/api/items/3",
+      statusCode: 200,
+    });
+    expect(forward[0]?.methods).toEqual({ GET: 4, POST: 1 });
+  });
+
+  it("bounds evidence at eight representatives even when more combinations are captured", () => {
+    const requests = Array.from({ length: 12 }, (_, index) =>
+      req("/api/items", {
+        requestId: `captured-${index}`,
+        statusCode: 200 + index,
+        seenAt: `2026-08-${String(index + 1).padStart(2, "0")}`,
+      }),
+    );
+    const forward = buildApiMap(["/api/items"], requests)[0];
+    const reversed = buildApiMap(["/api/items"], [...requests].reverse())[0];
+    expect(forward).toEqual(reversed);
+    expect(forward?.requests).toBe(12);
+    expect(forward?.evidence.map(({ requestId }) => requestId)).toEqual(
+      [11, 10, 9, 8, 7, 6, 5, 4].map((index) => `captured-${index}`),
+    );
   });
 
   it("is deterministic regardless of input order", () => {

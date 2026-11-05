@@ -20,7 +20,10 @@ host — a visual, Swagger-like view built on the same sitemap-first data as
   the path accent, endpoints sized by log(requests) and colored by status mix
   (has 4xx = warning accent, has 5xx = danger, else observed). Legend included.
 - Selecting an endpoint opens a details panel: methods, statuses, query keys,
-  example path, in-sitemap flag, last seen, and a Copy URL button.
+  example path, in-sitemap flag, last seen, Copy URL, and captured request
+  samples. **History** navigates to and scrolls to the captured request row;
+  **Replay** creates and opens an unsent draft from its ID. Sitemap-only
+  endpoints have no request to open.
 - Data loads lazily per host through the typed plugin bridge
   (`sdk.backend.getApiMap`) and is cached per host for the session. Loading,
   error, and renderer-failure (e.g. no WebGL) states are all visible.
@@ -36,6 +39,7 @@ host — a visual, Swagger-like view built on the same sitemap-first data as
 | GX-DOM-903 | Static-layout sigma canvas with status-colored endpoints and hover labels. | `features/routeTree/renderer.ts` | Harness data-flow run; live UI inspection (requires WebGL). |
 | GX-DOM-904 | Drill in/out via Enter, panel button, breadcrumb, Escape; per-host cache. | `DomainGraphPage`, `useApiMap` | Harness assertions; live UI smoke test. |
 | GX-DOM-905 | Renderer failure never leaves a blank pane. | RouteTreeCanvas error emit + drill error state | Code review; error branch rendered in drill canvas. |
+| GX-DOM-906 | Pivot from representative captured route requests without sending target traffic. | `DomainGraphPage`, Caido History/Replay SDK | Backend sample-ID smoke; typed frontend build. |
 
 ## Not part of this increment
 

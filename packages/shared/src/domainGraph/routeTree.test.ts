@@ -15,6 +15,7 @@ const route = (template: string, requests = 1): ApiRoute => ({
   methods: { GET: requests },
   statuses: { "200": requests },
   queryKeys: [],
+  evidence: [],
 });
 
 describe("buildRouteTree", () => {

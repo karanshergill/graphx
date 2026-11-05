@@ -21,15 +21,20 @@ sitemap endpoint is kept but flagged `inSitemap: false`.
 
 - `GET /api-map?host=<hostname>&scope=<id|name>` on `127.0.0.1:8771`. Host is
   normalized/validated (400 on missing/invalid host or host absent from the
-  sitemap). Request sweep: `req.host.eq`, newest-first, uncapped with the
-  cursor-stagnation guard; `truncated` only if that guard fires.
+  sitemap). Request sweep: case-insensitive `req.host.like` including explicit
+  ports, newest-first, capped at 100,000 requests with a cursor-stagnation
+  guard; `truncated` signals either limit.
 - **Templating** over the sitemap path set: segments collapse to `{id}` on
   known patterns (numeric, UUID, ULID, ISO date, ≥16-char digit-containing
   token) and to `{param}` when a position exceeds **5 distinct literal values**
   across otherwise-identical paths. Request paths join templates by exact
   collapsed match, else most-specific literal match.
 - Each route: `template, examplePath, inSitemap, requests, methods{}, statuses{},
-  queryKeys[], firstSeen, lastSeen`. Deterministic, input-order independent.
+  queryKeys[], firstSeen, lastSeen, evidence[]`. `evidence[]` contains up to
+  eight captured request samples (one newest request per method/status, stable
+  ties), each with `requestId`, method, path, optional status and timestamp.
+  Sitemap-only routes have no evidence; counts still include all swept requests.
+  Selection is deterministic and input-order independent.
 - Response: `project, scope, host, generatedAt, truncated, sitemapEndpoints,
   requestsScanned, routeCount, routes[]`.
 
@@ -47,9 +52,10 @@ path shape — read `statuses`/`examplePath` before trusting such a template.
 
 | ID | Requirement | Implementation | Acceptance evidence |
 | --- | --- | --- | --- |
-| GX-DOM-801 | Pattern + cardinality collapsing, deterministic. | `shared/domainGraph/apiMap.ts` | `apiMap.test.ts` (9 tests incl. order-independence). |
+| GX-DOM-801 | Pattern + cardinality collapsing, deterministic. | `shared/domainGraph/apiMap.ts` | `apiMap.test.ts` (including order-independence and captured-request samples). |
 | GX-DOM-802 | Sitemap-first structure: endpoints from the sitemap tree, stats joined from requests; orphans flagged. | `agentapi/query.ts` `readSitemapHostPaths`, `buildApiMap(sitemapPaths, requests)` | Live curl: 922 endpoints, 0 orphans. Tests for sitemap-only endpoints and `inSitemap:false`. |
 | GX-DOM-803 | Route served read-only on the agent API with 400s for bad input. | `agentapi/routes.ts` `/api-map` | Live curl outputs above; 400 on missing/invalid/absent host. |
+| GX-DOM-804 | Keep bounded, reproducible captured request IDs behind each route for native Caido pivots. | `apiMap.ts`, `agentapi/query.ts` | Model tests for mixed 200/403, sitemap-only and sample cap; backend query smoke with a captured ID. |
 
 ## Not part of this increment
 

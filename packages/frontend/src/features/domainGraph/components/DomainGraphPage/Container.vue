@@ -248,6 +248,8 @@ const drillOut = (): void => {
 // A project or scope switch invalidates the cached maps; leave the drill-down
 // so the old context's routes are never shown as if they were current.
 watch([() => project.value?.id, selectedScopeId], () => {
+  jsReconGeneration += 1;
+  jsReconLoading.value = false;
   jsReconByHost.value = new Map();
   if (drillHost.value !== undefined) drillOut();
 });
@@ -268,24 +270,68 @@ const copyRouteTemplate = (): void => {
   sdk.window.showToast("Route URL copied", { variant: "success" });
 };
 
+const openInHistory = async (requestId: string): Promise<void> => {
+  try {
+    const scopeId = selectedScopeId.value;
+    if (scopeId !== undefined) await sdk.httpHistory.setScope(scopeId);
+    sdk.navigation.goTo({ id: "HTTPHistory" });
+    sdk.httpHistory.scrollTo(requestId);
+  } catch (cause: unknown) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    sdk.window.showToast(`Could not locate request in History: ${message}`, {
+      variant: "error",
+    });
+  }
+};
+
+const openInReplay = async (requestId: string): Promise<void> => {
+  try {
+    const previous = new Set(
+      sdk.replay.getSessions().map((session) => session.id),
+    );
+    await sdk.replay.createSession({ type: "ID", id: requestId });
+    const created = sdk.replay
+      .getSessions()
+      .filter((session) => !previous.has(session.id));
+    if (created.length !== 1 || created[0] === undefined) {
+      throw new Error("Caido did not expose a unique new Replay session.");
+    }
+    sdk.navigation.goTo({ id: "Replay" });
+    sdk.replay.openTab(created[0].id);
+  } catch (cause: unknown) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    sdk.window.showToast(`Could not open request in Replay: ${message}`, {
+      variant: "error",
+    });
+  }
+};
+
 const jsReconByHost = ref(new Map<string, JsReconFindings>());
 const jsReconLoading = ref(false);
 const jsReconThrottle = ref(DEFAULT_ACTIVE_FETCH_DELAY_MS);
+let jsReconGeneration = 0;
 const selectedJsRecon = computed(() => {
   const hostname = selectedHostname.value;
   return hostname === undefined ? undefined : jsReconByHost.value.get(hostname);
+});
+const showAllReconEvidence = ref(false);
+watch(selectedHostname, () => {
+  showAllReconEvidence.value = false;
 });
 
 const scanJsRecon = async (): Promise<void> => {
   const hostname = selectedHostname.value;
   if (hostname === undefined || jsReconLoading.value) return;
+  const generation = ++jsReconGeneration;
+  const scopeId = selectedScopeId.value;
   jsReconLoading.value = true;
   try {
     const result = await sdk.backend.getJsRecon(
       hostname,
-      selectedScopeId.value,
+      scopeId,
       jsReconThrottle.value,
     );
+    if (generation !== jsReconGeneration) return;
     if (result.kind === "Error") {
       sdk.window.showToast(result.error, { variant: "error" });
       return;
@@ -294,10 +340,11 @@ const scanJsRecon = async (): Promise<void> => {
     next.set(hostname, result.value);
     jsReconByHost.value = next;
   } catch (cause: unknown) {
+    if (generation !== jsReconGeneration) return;
     const message = cause instanceof Error ? cause.message : String(cause);
     sdk.window.showToast(`JS recon failed: ${message}`, { variant: "error" });
   } finally {
-    jsReconLoading.value = false;
+    if (generation === jsReconGeneration) jsReconLoading.value = false;
   }
 };
 
@@ -583,43 +630,59 @@ const copyReconEndpoints = (): void => {
               <p v-if="selectedJsRecon.truncated" class="graphx-assets-more">
                 Recon sweep truncated — data may be incomplete.
               </p>
-              <ul v-if="selectedJsRecon.endpoints.length > 0">
+              <small v-if="selectedJsRecon.evidence.length > 0">
+                Leads · {{ selectedJsRecon.evidence.length }} representative
+                source locations
+              </small>
+              <ul
+                v-if="selectedJsRecon.evidence.length > 0"
+                class="graphx-evidence"
+              >
                 <li
-                  v-for="endpoint in selectedJsRecon.endpoints.slice(0, 50)"
-                  :key="endpoint"
+                  v-for="lead in showAllReconEvidence
+                    ? selectedJsRecon.evidence
+                    : selectedJsRecon.evidence.slice(0, 50)"
+                  :key="`${lead.kind}:${lead.value}`"
                 >
-                  <code>{{ endpoint }}</code>
+                  <div class="graphx-evidence-info">
+                    <span>{{ lead.kind }}</span>
+                    <code :title="lead.value">{{ lead.value }}</code>
+                    <small>
+                      {{
+                        lead.sourcePath ?? lead.assetPath ?? "JavaScript body"
+                      }}:{{ lead.line }}:{{ lead.column }}
+                      <template v-if="lead.sourcePath && lead.assetPath">
+                        · from {{ lead.assetPath }}
+                      </template>
+                      <template v-if="!lead.requestId">
+                        · no captured request
+                      </template>
+                    </small>
+                  </div>
+                  <div v-if="lead.requestId" class="graphx-evidence-actions">
+                    <button
+                      type="button"
+                      @click="openInHistory(lead.requestId)"
+                    >
+                      History
+                    </button>
+                    <button type="button" @click="openInReplay(lead.requestId)">
+                      Replay
+                    </button>
+                  </div>
                 </li>
               </ul>
-              <p
-                v-if="selectedJsRecon.endpoints.length > 50"
-                class="graphx-assets-more"
+              <button
+                v-if="selectedJsRecon.evidence.length > 50"
+                type="button"
+                @click="showAllReconEvidence = !showAllReconEvidence"
               >
-                + {{ selectedJsRecon.endpoints.length - 50 }} more
-              </p>
-              <small v-if="selectedJsRecon.graphqlOperations.length > 0">
-                GraphQL: {{ selectedJsRecon.graphqlOperations.join(", ") }}
-              </small>
-              <small v-if="selectedJsRecon.storageKeys.length > 0">
-                Storage: {{ selectedJsRecon.storageKeys.join(", ") }}
-              </small>
-              <small v-if="Object.keys(selectedJsRecon.sinks).length > 0">
-                Sinks:
                 {{
-                  Object.entries(selectedJsRecon.sinks)
-                    .map(([sink, count]) => `${sink}×${count}`)
-                    .join(" · ")
+                  showAllReconEvidence
+                    ? "Show fewer leads"
+                    : `Show all ${selectedJsRecon.evidence.length} leads`
                 }}
-              </small>
-              <small
-                v-if="
-                  selectedJsRecon.postMessageHandlers > 0 ||
-                  selectedJsRecon.postMessageCalls > 0
-                "
-              >
-                postMessage: {{ selectedJsRecon.postMessageHandlers }} listeners
-                · {{ selectedJsRecon.postMessageCalls }} calls
-              </small>
+              </button>
               <template v-if="selectedJsRecon.sourceMaps.length > 0">
                 <small>
                   Source maps ·
@@ -809,6 +872,38 @@ const copyReconEndpoints = (): void => {
                 · not in sitemap</template
               ></small
             >
+            <div
+              v-if="selectedEndpoint.evidence.length > 0"
+              class="graphx-route-evidence"
+            >
+              <small>Captured request samples (one per method/status)</small>
+              <ul>
+                <li
+                  v-for="sample in selectedEndpoint.evidence"
+                  :key="sample.requestId"
+                >
+                  <code :title="sample.path">
+                    {{ sample.method }} {{ sample.statusCode ?? "—" }}
+                    {{ sample.path }}
+                  </code>
+                  <div class="graphx-evidence-actions">
+                    <button
+                      type="button"
+                      @click="openInHistory(sample.requestId)"
+                    >
+                      History
+                    </button>
+                    <button
+                      type="button"
+                      @click="openInReplay(sample.requestId)"
+                    >
+                      Replay
+                    </button>
+                  </div>
+                </li>
+              </ul>
+            </div>
+            <small v-else>No captured request for this route.</small>
             <button type="button" @click="copyRouteTemplate">Copy URL</button>
           </aside>
           <div class="graphx-legend" aria-label="Route map legend">
