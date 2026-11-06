@@ -60,7 +60,13 @@ type JsRequestBody = {
 
 // Keep path plus query for display and full URL for deduplication; bundles on
 // different schemes or ports can lead to different maps.
-type Candidate = { id: string; key: string; url: string; node: RequestNode };
+type Candidate = {
+  id: string;
+  key: string;
+  url: string;
+  origin: string;
+  node: RequestNode;
+};
 
 // LIKE without wildcards is ASCII case-insensitive; the second clause also
 // matches Host headers carrying an explicit port.
@@ -117,10 +123,11 @@ const sweepCandidates = async (
       if (node.response?.statusCode === 304) continue;
       const query = node.query ?? "";
       const key = query === "" ? node.path : `${node.path}?${query}`;
-      const url = new URL(key, originOf(node, host)).toString();
+      const origin = originOf(node, host);
+      const url = new URL(key, origin).toString();
       if (seen.has(url)) continue;
       seen.add(url);
-      candidates.push({ id: node.id, key, url, node });
+      candidates.push({ id: node.id, key, url, origin, node });
     }
     await forEachBatch(candidates, visit);
 
@@ -234,6 +241,23 @@ const buildHostJsRecon = async (
   if (normalized === undefined) throw new Error(`Invalid host "${host}".`);
 
   const extractions: JsReconExtraction[] = [];
+  const endpointTargetsByPath = new Map<string, Set<string>>();
+  const collectExtraction = (
+    extraction: JsReconExtraction,
+    origin?: string,
+  ): void => {
+    extractions.push(extraction);
+    if (origin === undefined) return;
+    for (const endpoint of extraction.endpoints) {
+      if (!endpoint.startsWith("/")) continue;
+      let targets = endpointTargetsByPath.get(endpoint);
+      if (targets === undefined) {
+        targets = new Set<string>();
+        endpointTargetsByPath.set(endpoint, targets);
+      }
+      targets.add(`${origin}${endpoint}`);
+    }
+  };
   const sourceMaps: string[] = [];
   const sourceMapsBlocked: string[] = [];
   const sourceMapsFetched: string[] = [];
@@ -256,11 +280,12 @@ const buildHostJsRecon = async (
         const text = await fetchBodyText(sdk, candidate.id);
         if (text === undefined) return;
         bundlesScanned += 1;
-        extractions.push(
+        collectExtraction(
           extractJsRecon(text, {
             assetPath: candidate.key,
             requestId: candidate.id,
           }),
+          candidate.origin,
         );
 
         const ref = findSourceMapRef(text);
@@ -279,7 +304,7 @@ const buildHostJsRecon = async (
             if (recon !== undefined) {
               sourceMapsInline.push(candidate.key);
               for (const module of recon.sources) sourceModules.add(module);
-              extractions.push(recon.extraction);
+              collectExtraction(recon.extraction, candidate.origin);
             }
           }
           return;
@@ -309,7 +334,7 @@ const buildHostJsRecon = async (
         scannedUrls.add(candidate.url);
         sourceMaps.push(candidate.key);
         for (const module of recon.sources) sourceModules.add(module);
-        extractions.push(recon.extraction);
+        collectExtraction(recon.extraction, candidate.origin);
       },
     )
   )
@@ -426,8 +451,16 @@ const buildHostJsRecon = async (
       }
       sourceMapsFetched.push(path);
       for (const module of recon.sources) sourceModules.add(module);
-      extractions.push(recon.extraction);
+      collectExtraction(recon.extraction, new URL(url).origin);
     }
+  }
+
+  const merged = mergeJsRecon(extractions);
+  const endpointTargets = new Set<string>();
+  for (const endpoint of merged.endpoints) {
+    const observedTargets = endpointTargetsByPath.get(endpoint);
+    if (observedTargets === undefined) endpointTargets.add(endpoint);
+    else for (const target of observedTargets) endpointTargets.add(target);
   }
 
   return {
@@ -442,8 +475,9 @@ const buildHostJsRecon = async (
     sourceMapsInline: sourceMapsInline.sort(),
     sourceModules: [...sourceModules].sort(),
     truncated,
+    endpointTargets: [...endpointTargets].sort(),
     ...(active === undefined ? {} : { activeRecon: active.summary }),
-    ...mergeJsRecon(extractions),
+    ...merged,
   };
 };
 

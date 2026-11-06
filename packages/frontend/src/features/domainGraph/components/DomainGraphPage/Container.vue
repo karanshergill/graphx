@@ -387,17 +387,10 @@ const scanJsRecon = async (): Promise<void> => {
 
 const copyReconEndpoints = (): void => {
   const recon = selectedJsRecon.value;
-  const hostname = selectedHostname.value;
-  if (recon === undefined || hostname === undefined) return;
-  void navigator.clipboard.writeText(
-    recon.endpoints
-      .map((endpoint) =>
-        endpoint.startsWith("/") ? `https://${hostname}${endpoint}` : endpoint,
-      )
-      .join("\n"),
-  );
+  if (recon === undefined) return;
+  void navigator.clipboard.writeText(recon.endpointTargets.join("\n"));
   sdk.window.showToast(
-    `Copied ${recon.endpoints.length} endpoint${recon.endpoints.length === 1 ? "" : "s"}`,
+    `Copied ${recon.endpointTargets.length} endpoint${recon.endpointTargets.length === 1 ? "" : "s"}`,
     { variant: "success" },
   );
 };
@@ -832,7 +825,7 @@ const copyReconEndpoints = (): void => {
                 </template>
               </small>
               <button
-                v-if="selectedJsRecon.endpoints.length > 0"
+                v-if="selectedJsRecon.endpointTargets.length > 0"
                 type="button"
                 @click="copyReconEndpoints"
               >

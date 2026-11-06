@@ -28,6 +28,12 @@ observed bundles are fetched only after a one-scan opt-in in the GraphX UI.
   modules take priority over minified bundles; ties are stable across sweep
   order. A live-fetched map has no captured ID, so it has no History/Replay
   pivot.
+- `endpoints[]` deduplicates literal leads, while `endpointTargets[]` contains
+  distinct locations for **Copy endpoints**. Root-relative leads use every
+  observed bundle or source-map origin (scheme and port included); inline maps
+  inherit their bundle origin and live-fetched maps use the fetched map origin.
+  Absolute literals stay unchanged, and leads without a known origin stay
+  relative. Creating the list sends no target requests.
 - The backend sweep (`services/jsRecon.ts`) pages the GraphQL `requests`
   connection (scope-pinned, case-insensitive host match including explicit
   ports, `%.js`/`%.mjs`, status < 400, newest first), dedupes by full
@@ -93,7 +99,7 @@ observed bundles are fetched only after a one-scan opt-in in the GraphX UI.
 
 | Surface | Shape |
 | --- | --- |
-| `GET /js-recon?host=<hostname>&scope=<id\|name>` | Passive local sweep; `{ project, scope, host, generatedAt, bundlesScanned, missingMapReferences, sourceMapsScanned, sourceMaps[], sourceMapsBlocked[], sourceMapsFetched[], sourceMapsInline[], sourceModules[], truncated, endpoints[], graphqlOperations[], storageKeys[], postMessageHandlers, postMessageCalls, sinks{}, evidence[] }`. Legacy `throttle` and active-fetch flags are rejected. |
+| `GET /js-recon?host=<hostname>&scope=<id\|name>` | Passive local sweep; `{ project, scope, host, generatedAt, bundlesScanned, missingMapReferences, sourceMapsScanned, sourceMaps[], sourceMapsBlocked[], sourceMapsFetched[], sourceMapsInline[], sourceModules[], truncated, endpoints[], endpointTargets[], graphqlOperations[], storageKeys[], postMessageHandlers, postMessageCalls, sinks{}, evidence[] }`. Legacy `throttle` and active-fetch flags are rejected. |
 | `GET /js-recon/audit?host=<hostname>&scope=<id\|name>` | `{ project, scope, host, events[] }`, newest first, at most 100 events. Each event has `runId`, `time`, `scopeId`, `host`, `requestBudget` (`"all"` means uncapped), `delayMs`, `type`, and optional `url`, `statusCode`, `outcome`. |
 | Plugin API `getJsRecon(host, scopeId?, options?: { active?: { delayMs, maxRequests? } })` | `Result<JsReconFindings>` with `missingMapReferences` and optional `activeRecon` run summary; only an explicit `active` option enables live requests. Omitting `maxRequests` attempts every discovered in-scope missing map. |
 
@@ -103,9 +109,10 @@ observed bundles are fetched only after a one-scan opt-in in the GraphX UI.
   enables a 1–20 cap. The minimum-delay input is always enforced. Consent and
   the limit toggle clear after each attempt and context change. Active results
   display sent, failed, skipped-out-of-scope, cap and audit run ID. The panel
-  also shows representative lead source locations and copy-as-URLs endpoints,
-  observed / blocked / live-fetched / inline source-map lists, and truncation
-  notice. For leads with a captured request ID, **History** scrolls to its
+  shows representative lead source locations and copies `endpointTargets[]`
+  without inventing HTTPS for relative leads. It also lists observed, blocked,
+  live-fetched, and inline source maps, with a truncation notice.
+  For leads with a captured request ID, **History** scrolls to its
   captured row for inspection; **Replay** opens an unsent request draft. The
   list can expand beyond its first 50 entries.
 - Recon results are cached per host in the page and cleared on project/scope
@@ -122,3 +129,4 @@ observed bundles are fetched only after a one-scan opt-in in the GraphX UI.
 | R5 | UI panel | `DomainGraphPage/Container.vue` | vue-tsc; build; Caido 0.59 passive scan: one captured bundle, one endpoint, one missing map |
 | R6 | Captured source provenance and native Caido pivots | `shared/src/jsRecon.ts`, `services/jsRecon.ts`, `DomainGraphPage/Container.vue` | Model tests for multiline positions, source-map priority and no fabricated live-map ID; typed frontend build. |
 | R7 | Per-run consent, rate control, optional cap, and persistent audit | `DomainGraphPage/Container.vue`, `services/jsRecon.ts`, `repositories/jsRecon.ts` | Exhaustive/optional-cap, rate and fail-closed tests plus UI smoke |
+| R8 | Preserve observed origins when copying endpoint leads. | `services/jsRecon.ts`, `DomainGraphPage/Container.vue` | Backend tests cover HTTP, HTTPS, non-default ports, and captured map sources; installed Caido API and UI-generated copy text retained `http://localhost:4175/`. |

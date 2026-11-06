@@ -38,8 +38,19 @@ const fixture = (
       isTls?: boolean;
       port?: number;
     };
-    observedMaps?: { path: string; query?: string; body?: string }[];
-    blockedMaps?: { path: string; query?: string }[];
+    observedMaps?: {
+      path: string;
+      query?: string;
+      body?: string;
+      isTls?: boolean;
+      port?: number;
+    }[];
+    blockedMaps?: {
+      path: string;
+      query?: string;
+      isTls?: boolean;
+      port?: number;
+    }[];
     responseOverrides?: Record<string, { statusCode: number; body: string }>;
     pagination?: (
       page: number,
@@ -140,7 +151,8 @@ const fixture = (
                 id,
                 path: map?.path ?? `/bundle${current}.js`,
                 ...(map?.query === undefined ? {} : { query: map.query }),
-                isTls: true,
+                isTls: map?.isTls ?? true,
+                ...(map?.port === undefined ? {} : { port: map.port }),
                 ...(isJs ? (options.bundleLocation?.(current) ?? {}) : {}),
                 response: {
                   statusCode:
@@ -698,6 +710,83 @@ describe("JS recon backend safety", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("keeps each captured origin when exporting endpoints from shared paths", async () => {
+    const { sdk, send } = fixture(3, {
+      bundleLocation: (index) => ({
+        path: "/app.js",
+        isTls: index === 2,
+        ...(index === 0 ? { port: 8080 } : {}),
+      }),
+      responseOverrides: {
+        r0: {
+          statusCode: 200,
+          body: 'fetch("/api/origin"); fetch("https://other.example/v1");',
+        },
+        r1: { statusCode: 200, body: 'fetch("/api/origin");' },
+        r2: {
+          statusCode: 200,
+          body: 'fetch("/api/origin"); fetch(`/api/items/${id}`);',
+        },
+      },
+    });
+    const { repo } = memoryRepository();
+    const result = await createJsReconService(sdk, repo).scan(
+      "example.com",
+      "scope-a",
+    );
+    expect(result.kind).toBe("Ok");
+    if (result.kind !== "Ok") return;
+    expect(result.value.endpoints).toEqual([
+      "/api/items/${id}",
+      "/api/origin",
+      "https://other.example/v1",
+    ]);
+    expect(result.value.endpointTargets).toEqual([
+      "http://example.com/api/origin",
+      "http://example.com:8080/api/origin",
+      "https://example.com/api/items/${id}",
+      "https://example.com/api/origin",
+      "https://other.example/v1",
+    ]);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("exports original-source leads using their captured map origin", async () => {
+    const { sdk, send } = fixture(1, {
+      bundleLocation: () => ({
+        path: "/bundle0.js",
+        isTls: false,
+        port: 8080,
+      }),
+      observedMaps: [
+        {
+          path: "/bundle0.js.map",
+          isTls: false,
+          port: 8080,
+          body: JSON.stringify({
+            version: 3,
+            sources: ["original.ts"],
+            sourcesContent: ['fetch("/api/original")'],
+            mappings: "",
+          }),
+        },
+      ],
+    });
+    const { repo } = memoryRepository();
+    const result = await createJsReconService(sdk, repo).scan(
+      "example.com",
+      "scope-a",
+    );
+    expect(result.kind).toBe("Ok");
+    if (result.kind !== "Ok") return;
+    expect(result.value.endpoints).toEqual(["/api/original"]);
+    expect(result.value.endpointTargets).toEqual([
+      "http://example.com:8080/api/original",
+    ]);
+    expect(result.value.missingMapReferences).toBe(0);
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("does not collapse different schemes and ports onto one map request", async () => {

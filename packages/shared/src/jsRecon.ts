@@ -49,6 +49,8 @@ export type JsReconActiveSummary = {
 };
 
 export type JsReconFindings = JsReconExtraction & {
+  // Distinct copied targets retain observed asset origins; unknowns stay relative.
+  endpointTargets: string[];
   host: string;
   generatedAt: string;
   bundlesScanned: number;

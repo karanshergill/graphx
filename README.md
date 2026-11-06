@@ -43,6 +43,10 @@ Install `dist/plugin_package.zip` from Caido's Plugins page, then select **Graph
 
 Route details show up to eight representative captured requests (one per method/status combination). **History** locates the original request row; **Replay** creates and opens a draft without sending it. JS recon shows an asset or original source-map module and a 1-based line and column for each deduplicated lead, with the same pivots when a captured request exists.
 
+**Copy endpoints** preserves each captured asset's scheme and port; the same
+relative path can yield multiple distinct URLs. Leads with no known origin
+remain relative rather than being rewritten to HTTPS.
+
 JS recon reads captured traffic by default. A captured `304` revalidation does
 not hide an earlier `200` JS or source-map body at the same URL. To request
 missing source maps from a target, check **Enable active source-map fetch** for
