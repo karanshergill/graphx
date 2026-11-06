@@ -28,12 +28,17 @@ export const useDomainAssets = ({
   const state = ref<LoadState>("idle");
   let running = false;
   let probing = false;
+  let pendingProbe = false;
   let generation = 0;
   let fetchedSnapshot = -1;
 
   const probe = async (): Promise<void> => {
     const scopeId = selectedScopeId.value;
-    if (!running || probing || scopeId === undefined) return;
+    if (!running || scopeId === undefined) return;
+    if (probing) {
+      pendingProbe = true;
+      return;
+    }
     probing = true;
     const current = ++generation;
     try {
@@ -56,6 +61,10 @@ export const useDomainAssets = ({
       });
     } finally {
       probing = false;
+      if (pendingProbe) {
+        pendingProbe = false;
+        void probe();
+      }
     }
   };
 
@@ -67,6 +76,7 @@ export const useDomainAssets = ({
 
   const stop = (): void => {
     running = false;
+    pendingProbe = false;
     generation += 1;
     fetchedSnapshot = -1;
     assetsByHost.value = new Map();

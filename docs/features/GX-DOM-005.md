@@ -33,6 +33,9 @@ host without leaving Caido.
 - A `requestCount` probe on the same filter returns a `snapshot` token; the
   full sweep only re-runs when the token changes (checked on each manual
   graph sync).
+- If the scope, manual sync, or page activation changes during a probe, the
+  latest request is queued once and checked after the in-flight probe settles.
+  Old scope/page results are discarded; sweeps never overlap.
 
 ## Semantics
 
@@ -63,7 +66,7 @@ host without leaving Caido.
 | GX-DOM-503 | Correct bundle/map classification incl. `.js.map` and `.json` exclusion. | `assets/domainAssets.ts` | `domainAssets.test.ts` (5 tests). |
 | GX-DOM-504 | Toggle mutes JS-less hosts and suffixes counts, on both renderers. | sigma `nodeReducer`, canvas `draw()` | Harness screenshot diff; installed UI inspection. |
 | GX-DOM-505 | Per-host bundle list with map badge, status, copy URLs. | `DomainGraphPage` selection panel | Harness DOM assertions; installed UI inspection. |
-| GX-DOM-506 | Lifecycle: reload on scope change and manual graph sync; release on exit. | `useDomainAssets` | Composable review; navigation smoke test. |
+| GX-DOM-506 | Lifecycle: reload on scope change and manual graph sync; release on exit. | `useDomainAssets` | Deferred snapshot/sweep tests cover scope switches, manual sync, and page re-entry; installed UI navigation smoke. |
 
 ## Not part of this increment
 
