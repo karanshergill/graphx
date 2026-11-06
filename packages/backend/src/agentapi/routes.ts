@@ -1,5 +1,5 @@
 import type { ApiMapResponse, ScopeDefinition } from "shared";
-import { normalizeHostname, normalizeThrottleMs } from "shared";
+import { normalizeHostname } from "shared";
 
 import type { DomainMarksService, JsReconService } from "../services";
 import type { BackendSDK } from "../types";
@@ -165,8 +165,17 @@ export const createAgentRoutes = (
     {
       method: "GET",
       path: "/js-recon",
-      handle: (query) =>
-        withScope(query, async (scope) => {
+      handle: (query) => {
+        for (const key of query.keys()) {
+          if (key !== "host" && key !== "scope") {
+            return Promise.resolve(
+              badRequest(
+                `Unsupported JS recon query parameter "${key}". Active scans require explicit UI opt-in.`,
+              ),
+            );
+          }
+        }
+        return withScope(query, async (scope) => {
           const host = query.get("host") ?? undefined;
           if (host === undefined || host.trim().length === 0) {
             return badRequest("Pass ?host=<hostname> to scan.");
@@ -174,16 +183,35 @@ export const createAgentRoutes = (
           if (normalizeHostname(host) === undefined) {
             return badRequest(`Invalid host "${host}".`);
           }
-          const result = await jsReconService.scan(
-            host,
-            scope.id,
-            normalizeThrottleMs(query.get("throttle")),
-          );
+          const result = await jsReconService.scan(host, scope.id);
           if (result.kind === "Error") return badRequest(result.error);
           return ok({
             project: await currentProject(),
             scope: { id: scope.id, name: scope.name },
             ...result.value,
+          });
+        });
+      },
+    },
+    {
+      method: "GET",
+      path: "/js-recon/audit",
+      handle: (query) =>
+        withScope(query, async (scope) => {
+          const host = query.get("host") ?? undefined;
+          if (host === undefined || host.trim().length === 0) {
+            return badRequest("Pass ?host=<hostname> to read JS recon audit.");
+          }
+          if (normalizeHostname(host) === undefined) {
+            return badRequest(`Invalid host "${host}".`);
+          }
+          const result = await jsReconService.listAudit(host, scope.id);
+          if (result.kind === "Error") return badRequest(result.error);
+          return ok({
+            project: await currentProject(),
+            scope: { id: scope.id, name: scope.name },
+            host: normalizeHostname(host),
+            events: result.value,
           });
         }),
     },

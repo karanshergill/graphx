@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_ACTIVE_FETCH_DELAY_MS,
+  DEFAULT_CAPPED_REQUEST_BUDGET,
   extractJsRecon,
   extractSourceMapRecon,
   findSourceMapRef,
+  MAX_ACTIVE_FETCH_DELAY_MS,
+  MAX_ACTIVE_REQUEST_BUDGET,
   mergeJsRecon,
-  normalizeThrottleMs,
+  MIN_ACTIVE_FETCH_DELAY_MS,
+  validateActiveReconOptions,
 } from "./jsRecon";
 
 describe("extractJsRecon", () => {
@@ -450,19 +455,63 @@ describe("findSourceMapRef", () => {
   });
 });
 
-describe("normalizeThrottleMs", () => {
-  it("falls back to the default for missing or invalid values", () => {
-    expect(normalizeThrottleMs(undefined)).toBe(2_000);
-    expect(normalizeThrottleMs(null)).toBe(2_000);
-    expect(normalizeThrottleMs("")).toBe(2_000);
-    expect(normalizeThrottleMs("abc")).toBe(2_000);
-    expect(normalizeThrottleMs(-5)).toBe(2_000);
+describe("validateActiveReconOptions", () => {
+  it("accepts unlimited active options with a valid delay", () => {
+    expect(
+      validateActiveReconOptions({ delayMs: DEFAULT_ACTIVE_FETCH_DELAY_MS }),
+    ).toBeUndefined();
+    expect(
+      validateActiveReconOptions({ delayMs: MIN_ACTIVE_FETCH_DELAY_MS }),
+    ).toBeUndefined();
   });
 
-  it("accepts numbers and numeric strings, floored; 0 disables", () => {
-    expect(normalizeThrottleMs(500)).toBe(500);
-    expect(normalizeThrottleMs("750")).toBe(750);
-    expect(normalizeThrottleMs(250.7)).toBe(250);
-    expect(normalizeThrottleMs(0)).toBe(0);
+  it("accepts bounded numeric active options", () => {
+    expect(
+      validateActiveReconOptions({
+        maxRequests: DEFAULT_CAPPED_REQUEST_BUDGET,
+        delayMs: DEFAULT_ACTIVE_FETCH_DELAY_MS,
+      }),
+    ).toBeUndefined();
+    expect(
+      validateActiveReconOptions({
+        maxRequests: MAX_ACTIVE_REQUEST_BUDGET,
+        delayMs: MIN_ACTIVE_FETCH_DELAY_MS,
+      }),
+    ).toBeUndefined();
+    expect(
+      validateActiveReconOptions({
+        maxRequests: 1,
+        delayMs: MAX_ACTIVE_FETCH_DELAY_MS,
+      }),
+    ).toBeUndefined();
   });
+
+  it.each([
+    undefined,
+    null,
+    "",
+    [],
+    {},
+    { maxRequests: 1 },
+    { maxRequests: undefined, delayMs: 1_000 },
+    { maxRequests: 1, delayMs: 1_000, extra: true },
+  ])("rejects malformed options %p", (value) => {
+    expect(validateActiveReconOptions(value)).toBeTruthy();
+  });
+
+  it.each([0, -1, 1.5, 21, "10", NaN, Infinity, undefined])(
+    "rejects invalid request budget %p",
+    (maxRequests) => {
+      expect(
+        validateActiveReconOptions({ maxRequests, delayMs: 2_000 }),
+      ).toMatch(/Request budget/);
+    },
+  );
+
+  it.each([0, -1, 999, 1_000.5, 60_001, "2000", NaN, Infinity])(
+    "rejects invalid fetch delay %p",
+    (delayMs) => {
+      expect(validateActiveReconOptions({ delayMs })).toMatch(/Fetch delay/);
+    },
+  );
 });

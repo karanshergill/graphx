@@ -11,14 +11,15 @@ the same way they query Caido itself — GraphX must not be a UI-only silo.
 ## Semantics
 
 - The backend plugin runs a minimal HTTP/1.1 responder over a raw LLRT TCP
-  listener (`net.createServer`), bound to **127.0.0.1:8771**. Loopback-only =
-  same trust level as the local project database; **no auth in v1** (documented
-  decision). Port registry: 8080 Caido, 8766 race plugin, 8771 GraphX, 9222 CDP.
+  listener (`net.createServer`), bound to **127.0.0.1:8771**. Loopback-only
+  is **not authentication**: local clients can read project data. Port
+  registry: 8080 Caido, 8766 race plugin, 8771 GraphX, 9222 CDP.
 - All routes use GET and return JSON; errors are `{ "error": string }` with
   400 (bad scope/request), 404 (no route), or 500 (handler failure).
-  GET does not guarantee a passive operation: the later `/js-recon` route
-  can fetch missing in-scope source maps and saves findings in SQLite
-  (see GX-DOM-010). The routes below do not send target traffic.
+  `GET /js-recon` scans only captured responses and saves findings; it never
+  sends requests to target hosts. Active source-map fetching requires a
+  per-scan UI opt-in and is not exposed by the unauthenticated loopback API.
+  `GET /js-recon/audit` reads the project/scope/host-specific active audit.
 - Data is rebuilt server-side through backend `sdk.graphql.execute` plus the
   shared package's pure logic (`buildDomainGraph`, `groupAssetsByHost` — the
   asset module moved from frontend to `shared/src/domainGraph/assets.ts` so

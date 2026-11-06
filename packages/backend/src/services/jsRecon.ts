@@ -6,21 +6,37 @@ import {
   extractJsRecon,
   extractSourceMapRecon,
   findSourceMapRef,
+  type JsReconActiveOptions,
+  type JsReconActiveSummary,
   type JsReconExtraction,
   type JsReconFindings,
+  type JsReconScanOptions,
   mergeJsRecon,
   normalizeHostname,
-  normalizeThrottleMs,
   ok,
   type Result,
+  validateActiveReconOptions,
 } from "shared";
 
 import { execute, resolveScope } from "../agentapi/query";
-import type { JsReconRepository } from "../repositories";
+import type {
+  JsReconAuditEvent,
+  JsReconRepository,
+} from "../repositories/jsRecon";
 import type { BackendSDK } from "../types";
 
 const PAGE_SIZE = 200;
 const FETCH_CONCURRENCY = 16;
+
+type ActiveRun = {
+  projectId: string;
+  options: JsReconActiveOptions;
+  summary: JsReconActiveSummary;
+  pacing: { lastSendAt?: number };
+  audit: (
+    event: Pick<JsReconAuditEvent, "type" | "url" | "statusCode" | "outcome">,
+  ) => Promise<void>;
+};
 
 type RequestNode = {
   id: string;
@@ -41,9 +57,9 @@ type JsRequestBody = {
   request?: { response?: { raw?: string } };
 };
 
-// Dedupe/display key: path plus query, so cache-busted variants of the same
-// path (`/app.js?v=a` vs `?v=b`) are scanned as distinct bodies.
-type Candidate = { id: string; key: string; node: RequestNode };
+// Keep path plus query for display and full URL for deduplication; bundles on
+// different schemes or ports can lead to different maps.
+type Candidate = { id: string; key: string; url: string; node: RequestNode };
 
 // LIKE without wildcards is ASCII case-insensitive; the second clause also
 // matches Host headers carrying an explicit port.
@@ -68,14 +84,17 @@ const decodeBody = (raw: string): string | undefined => {
   return text.slice(separator + 4);
 };
 
-const collectCandidates = async (
+// Keep only one page's request nodes in memory. Dedupe across pages by URL,
+// but process bodies before requesting the next page.
+const sweepCandidates = async (
   sdk: BackendSDK,
   scopeId: string,
+  host: string,
   filter: string,
-): Promise<{ candidates: Candidate[]; truncated: boolean }> => {
+  visit: (candidate: Candidate) => Promise<void>,
+): Promise<boolean> => {
   const seen = new Set<string>();
-  const candidates: Candidate[] = [];
-  let truncated = false;
+  const visitedCursors = new Set<string>();
   let after: string | undefined;
 
   for (;;) {
@@ -91,30 +110,35 @@ const collectCandidates = async (
       },
     );
 
-    for (const edge of data.requests.edges) {
-      const node = edge.node;
+    const candidates: Candidate[] = [];
+    for (const { node } of data.requests.edges) {
       const query = node.query ?? "";
       const key = query === "" ? node.path : `${node.path}?${query}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      candidates.push({ id: node.id, key, node });
+      const url = new URL(key, originOf(node, host)).toString();
+      if (seen.has(url)) continue;
+      seen.add(url);
+      candidates.push({ id: node.id, key, url, node });
     }
+    await forEachBatch(candidates, visit);
 
     const { endCursor, hasNextPage } = data.requests.pageInfo;
-    if (!hasNextPage || endCursor === undefined) break;
-    // Loop-safety guard, not a budget: a non-advancing cursor would page
-    // forever. Should never fire.
-    if (endCursor === after) {
+    if (!hasNextPage) return false;
+    // A malformed or cycling cursor must not loop forever or claim a complete sweep.
+    if (
+      data.requests.edges.length === 0 ||
+      endCursor === undefined ||
+      endCursor === "" ||
+      endCursor === after ||
+      visitedCursors.has(endCursor)
+    ) {
       sdk.console.warn(
         "GraphX JS recon sweep stopped: pagination cursor did not advance; results are truncated.",
       );
-      truncated = true;
-      break;
+      return true;
     }
+    visitedCursors.add(endCursor);
     after = endCursor;
   }
-
-  return { candidates, truncated };
 };
 
 const fetchBodyText = async (
@@ -140,6 +164,8 @@ const fetchBodyText = async (
   return decodeBody(raw);
 };
 
+const completed = Promise.resolve();
+
 // Sequential batches of parallel fetches: fast enough for big sweeps without
 // hammering the local GraphQL endpoint with an unbounded fan-out.
 const forEachBatch = async (
@@ -151,8 +177,11 @@ const forEachBatch = async (
   }
 };
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number): Promise<void> => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, ms);
+  return promise;
+};
 
 const originOf = (node: RequestNode, host: string): string => {
   const tls = node.isTls !== false;
@@ -168,9 +197,8 @@ const originOf = (node: RequestNode, host: string): string => {
 // URL` handles relative, root-relative, protocol-relative, and absolute
 // refs and normalizes dot segments (`/a/../x.map` → `/x.map`). Returns
 // undefined for cross-host or non-HTTP references (webpack://, file:, …).
-// `path` is query/fragment-free so it compares cleanly with the observed
-// and blocked path sets; `url` keeps the query (and any explicit port)
-// for the live fetch.
+// `path` keeps the path and query for display; `url` includes scheme, host and
+// port for identity, so captured variants cannot hide an unseen reference.
 const resolveMapUrl = (
   ref: string,
   bundle: RequestNode,
@@ -187,16 +215,17 @@ const resolveMapUrl = (
   }
   if (resolved.hostname.toLowerCase() !== host) return undefined;
   resolved.hash = "";
-  return { path: resolved.pathname, url: resolved.toString() };
+  return {
+    path: `${resolved.pathname}${resolved.search}`,
+    url: resolved.toString(),
+  };
 };
-
-const pathOnly = (key: string): string => key.split("?", 1)[0] ?? key;
 
 const buildHostJsRecon = async (
   sdk: BackendSDK,
   scopeId: string,
   host: string,
-  fetchDelayMs: number,
+  active?: ActiveRun,
 ): Promise<JsReconFindings> => {
   const normalized = normalizeHostname(host);
   if (normalized === undefined) throw new Error(`Invalid host "${host}".`);
@@ -207,129 +236,194 @@ const buildHostJsRecon = async (
   const sourceMapsFetched: string[] = [];
   const sourceMapsInline: string[] = [];
   const sourceModules = new Set<string>();
-  // sourceMappingURL leads discovered in scanned bundles: path → fetch URL.
+  // sourceMappingURL leads discovered in scanned bundles: full request URL
+  // (including scheme, port, and query) → display path plus query.
   const mapLeads = new Map<string, string>();
   let bundlesScanned = 0;
   let truncated = false;
 
-  // The three candidate lists are independent; collect them concurrently.
-  const [jsCandidates, mapCandidates, blockedCandidates] = await Promise.all([
-    collectCandidates(
+  // Process one local page at a time; a malformed sweep cannot suppress the others.
+  if (
+    await sweepCandidates(
       sdk,
       scopeId,
+      normalized,
       buildFilter(normalized, JS_PATH_CLAUSE, STATUS_OK),
-    ),
-    collectCandidates(
-      sdk,
-      scopeId,
-      buildFilter(normalized, MAP_PATH_CLAUSE, STATUS_OK),
-    ),
-    collectCandidates(
-      sdk,
-      scopeId,
-      buildFilter(normalized, MAP_PATH_CLAUSE, STATUS_BLOCKED),
-    ),
-  ]);
-  truncated ||=
-    jsCandidates.truncated ||
-    mapCandidates.truncated ||
-    blockedCandidates.truncated;
-
-  await forEachBatch(jsCandidates.candidates, async (candidate) => {
-    const text = await fetchBodyText(sdk, candidate.id);
-    if (text === undefined) return;
-    bundlesScanned += 1;
-    extractions.push(
-      extractJsRecon(text, {
-        assetPath: candidate.key,
-        requestId: candidate.id,
-      }),
-    );
-
-    const ref = findSourceMapRef(text);
-    if (ref === undefined) return;
-    if (ref.startsWith("data:")) {
-      // Inline map: no fetch needed, decode in place.
-      const comma = ref.indexOf(",");
-      if (comma >= 0 && ref.slice(0, comma).includes(";base64")) {
-        const inline = Buffer.from(ref.slice(comma + 1), "base64").toString(
-          "utf-8",
+      async (candidate) => {
+        const text = await fetchBodyText(sdk, candidate.id);
+        if (text === undefined) return;
+        bundlesScanned += 1;
+        extractions.push(
+          extractJsRecon(text, {
+            assetPath: candidate.key,
+            requestId: candidate.id,
+          }),
         );
-        const recon = extractSourceMapRecon(inline, {
+
+        const ref = findSourceMapRef(text);
+        if (ref === undefined) return;
+        if (ref.startsWith("data:")) {
+          // Inline map: no fetch needed, decode in place.
+          const comma = ref.indexOf(",");
+          if (comma >= 0 && ref.slice(0, comma).includes(";base64")) {
+            const inline = Buffer.from(ref.slice(comma + 1), "base64").toString(
+              "utf-8",
+            );
+            const recon = extractSourceMapRecon(inline, {
+              assetPath: candidate.key,
+              requestId: candidate.id,
+            });
+            if (recon !== undefined) {
+              sourceMapsInline.push(candidate.key);
+              for (const module of recon.sources) sourceModules.add(module);
+              extractions.push(recon.extraction);
+            }
+          }
+          return;
+        }
+        const lead = resolveMapUrl(ref, candidate.node, normalized);
+        if (lead !== undefined) mapLeads.set(lead.url, lead.path);
+      },
+    )
+  )
+    truncated = true;
+
+  const scannedUrls = new Set<string>();
+  if (
+    await sweepCandidates(
+      sdk,
+      scopeId,
+      normalized,
+      buildFilter(normalized, MAP_PATH_CLAUSE, STATUS_OK),
+      async (candidate) => {
+        const text = await fetchBodyText(sdk, candidate.id);
+        if (text === undefined) return;
+        const recon = extractSourceMapRecon(text, {
           assetPath: candidate.key,
           requestId: candidate.id,
         });
-        if (recon !== undefined) {
-          sourceMapsInline.push(candidate.key);
-          for (const module of recon.sources) sourceModules.add(module);
-          extractions.push(recon.extraction);
-        }
-      }
-      return;
-    }
-    const lead = resolveMapUrl(ref, candidate.node, normalized);
-    if (lead !== undefined) mapLeads.set(lead.path, lead.url);
-  });
-
-  await forEachBatch(mapCandidates.candidates, async (candidate) => {
-    const text = await fetchBodyText(sdk, candidate.id);
-    if (text === undefined) return;
-    const recon = extractSourceMapRecon(text, {
-      assetPath: candidate.key,
-      requestId: candidate.id,
-    });
-    if (recon === undefined) return;
-    sourceMaps.push(candidate.key);
-    for (const module of recon.sources) sourceModules.add(module);
-    extractions.push(recon.extraction);
-  });
+        if (recon === undefined) return;
+        scannedUrls.add(candidate.url);
+        sourceMaps.push(candidate.key);
+        for (const module of recon.sources) sourceModules.add(module);
+        extractions.push(recon.extraction);
+      },
+    )
+  )
+    truncated = true;
 
   // Maps that answered 4xx/5xx: they exist but their bodies are blocked —
   // prime candidates for manual bypass attempts.
-  const scannedPaths = new Set(sourceMaps.map(pathOnly));
-  const blockedPaths = new Set<string>();
-  for (const candidate of blockedCandidates.candidates) {
-    const path = pathOnly(candidate.key);
-    if (!scannedPaths.has(path) && !blockedPaths.has(path)) {
-      blockedPaths.add(path);
-      sourceMapsBlocked.push(path);
+  const blockedUrls = new Set<string>();
+  if (
+    await sweepCandidates(
+      sdk,
+      scopeId,
+      normalized,
+      buildFilter(normalized, MAP_PATH_CLAUSE, STATUS_BLOCKED),
+      (candidate) => {
+        const url = candidate.url;
+        if (!scannedUrls.has(url) && !blockedUrls.has(url)) {
+          blockedUrls.add(url);
+          sourceMapsBlocked.push(candidate.key);
+        }
+        return completed;
+      },
+    )
+  )
+    truncated = true;
+
+  // Count unresolved references even in passive scans, before active fetches
+  // change the observed/blocked sets.
+  let missingMapReferences = 0;
+  for (const url of mapLeads.keys()) {
+    if (!scannedUrls.has(url) && !blockedUrls.has(url)) {
+      missingMapReferences += 1;
     }
   }
 
-  // Actively fetch maps referenced by bundles but never observed in the
-  // store. Scope-checked before every send; delay between sends is
-  // caller-controlled (default: low-and-slow, 0 disables).
-  const missing = [...mapLeads.entries()].filter(
-    ([path]) => !scannedPaths.has(path) && !blockedPaths.has(path),
-  );
-  let firstSend = true;
-  for (const [path, url] of missing) {
-    try {
+  // Only a UI-authorized active run may request an unseen source map.
+  if (active !== undefined) {
+    for (const [url, path] of mapLeads) {
+      if (scannedUrls.has(url) || blockedUrls.has(url)) continue;
+      if (
+        active.options.maxRequests !== undefined &&
+        active.summary.requestsSent >= active.options.maxRequests
+      ) {
+        active.summary.budgetExhausted = true;
+        break;
+      }
       const spec = new RequestSpec(url);
-      if (!sdk.requests.inScope(spec, [scopeId])) continue;
-      if (!firstSend && fetchDelayMs > 0) await sleep(fetchDelayMs);
-      firstSend = false;
-      const sent = await sdk.requests.send(spec);
-      const code = sent.response?.getCode();
-      const body = sent.response?.getBody();
-      if (code === undefined || code >= 400 || body === undefined) {
-        if (!blockedPaths.has(path)) {
-          blockedPaths.add(path);
+      const elapsed = Date.now() - (active.pacing.lastSendAt ?? -Infinity);
+      const remaining = active.options.delayMs - elapsed;
+      if (remaining > 0) await sleep(remaining);
+      // Scope may change while sleeping; check immediately before the audit/send.
+      if (!sdk.requests.inScope(spec, [scopeId])) {
+        active.summary.skippedOutOfScope += 1;
+        continue;
+      }
+      await active.audit({ type: "request", url });
+      const project = await sdk.projects.getCurrent();
+      if (project?.getId() !== active.projectId) {
+        await active.audit({
+          type: "failure",
+          url,
+          outcome: "Project changed before send.",
+        });
+        active.summary.failedRequests += 1;
+        continue;
+      }
+      if (!sdk.requests.inScope(spec, [scopeId])) {
+        await active.audit({
+          type: "failure",
+          url,
+          outcome: "Scope changed before send.",
+        });
+        active.summary.skippedOutOfScope += 1;
+        continue;
+      }
+      active.pacing.lastSendAt = Date.now();
+      active.summary.requestsSent += 1;
+      const sent = await sdk.requests.send(spec).then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error }),
+      );
+      if ("error" in sent) {
+        const message =
+          sent.error instanceof Error ? sent.error.message : String(sent.error);
+        await active.audit({ type: "failure", url, outcome: message });
+        active.summary.failedRequests += 1;
+        sdk.console.warn(`GraphX map fetch failed for ${url}: ${message}`);
+        continue;
+      }
+      const code = sent.value.response?.getCode();
+      const body = sent.value.response?.getBody();
+      const blocked = code === undefined || code >= 400 || body === undefined;
+      // A live fetch has no captured Caido request, even when a bundle led to it.
+      const recon = blocked
+        ? undefined
+        : extractSourceMapRecon(body.toText(), { assetPath: path });
+      await active.audit({
+        type: "response",
+        url,
+        ...(code === undefined ? {} : { statusCode: code }),
+        outcome: blocked
+          ? "blocked"
+          : recon === undefined
+            ? "invalid-map"
+            : "received",
+      });
+      if (recon === undefined) {
+        active.summary.failedRequests += 1;
+        if (blocked && !blockedUrls.has(url)) {
+          blockedUrls.add(url);
           sourceMapsBlocked.push(path);
         }
         continue;
       }
-      // A live fetch has no captured Caido request, even when a bundle led
-      // us to its URL.
-      const recon = extractSourceMapRecon(body.toText(), { assetPath: path });
-      if (recon === undefined) continue;
       sourceMapsFetched.push(path);
       for (const module of recon.sources) sourceModules.add(module);
       extractions.push(recon.extraction);
-    } catch (error: unknown) {
-      sdk.console.warn(
-        `GraphX map fetch failed for ${url}: ${error instanceof Error ? error.message : String(error)}`,
-      );
     }
   }
 
@@ -337,6 +431,7 @@ const buildHostJsRecon = async (
     host: normalized,
     generatedAt: new Date().toISOString(),
     bundlesScanned,
+    missingMapReferences,
     sourceMapsScanned: sourceMaps.length,
     sourceMaps: sourceMaps.sort(),
     sourceMapsBlocked: sourceMapsBlocked.sort(),
@@ -344,6 +439,7 @@ const buildHostJsRecon = async (
     sourceMapsInline: sourceMapsInline.sort(),
     sourceModules: [...sourceModules].sort(),
     truncated,
+    ...(active === undefined ? {} : { activeRecon: active.summary }),
     ...mergeJsRecon(extractions),
   };
 };
@@ -352,32 +448,125 @@ export type JsReconService = {
   scan: (
     host: string,
     scopeId?: string,
-    throttleMs?: number,
+    options?: JsReconScanOptions,
   ) => Promise<Result<JsReconFindings>>;
+  listAudit: (
+    host: string,
+    scopeId?: string,
+  ) => Promise<Result<JsReconAuditEvent[]>>;
 };
+
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
 
 export const createJsReconService = (
   sdk: BackendSDK,
   repository: JsReconRepository,
-): JsReconService => ({
-  scan: async (host, scopeId, throttleMs) => {
-    try {
-      if (normalizeHostname(host) === undefined)
-        return err(`Invalid host "${host}".`);
-      const project = await sdk.projects.getCurrent();
-      if (project === undefined)
-        return err("No Caido project is currently selected.");
-      const scope = await resolveScope(sdk, scopeId);
-      const findings = await buildHostJsRecon(
-        sdk,
-        scope.id,
-        host,
-        normalizeThrottleMs(throttleMs),
-      );
-      await repository.save(project.getId(), findings);
-      return ok(findings);
-    } catch (error: unknown) {
-      return err(error instanceof Error ? error.message : String(error));
-    }
-  },
-});
+): JsReconService => {
+  // The plugin owns one send lane; spacing survives completed runs.
+  let activeRunInProgress = false;
+  const pacing: { lastSendAt?: number } = {};
+  // Run IDs correlate audit events; they are not authorization tokens.
+  let nextRunSequence = 0;
+  return {
+    scan: async (host, scopeId, options) => {
+      const normalized = normalizeHostname(host);
+      if (normalized === undefined) return err(`Invalid host "${host}".`);
+      if (
+        options !== undefined &&
+        (typeof options !== "object" ||
+          options === null ||
+          Array.isArray(options))
+      ) {
+        return err("Invalid JS recon scan options.");
+      }
+      const activeOptions = options?.active;
+      if (activeOptions !== undefined) {
+        const validation = validateActiveReconOptions(activeOptions);
+        if (validation !== undefined) return err(validation);
+        if (activeRunInProgress)
+          return err("An active JS recon run is already in progress.");
+        activeRunInProgress = true;
+      }
+
+      try {
+        const project = await sdk.projects.getCurrent();
+        if (project === undefined)
+          return err("No Caido project is currently selected.");
+        const scope = await resolveScope(sdk, scopeId);
+        if (activeOptions === undefined) {
+          const findings = await buildHostJsRecon(sdk, scope.id, normalized);
+          await repository.save(project.getId(), findings);
+          return ok(findings);
+        }
+
+        nextRunSequence += 1;
+        const summary: JsReconActiveSummary = {
+          runId: `${Date.now().toString(36)}-${nextRunSequence.toString(36)}`,
+          requestsSent: 0,
+          requestBudget: activeOptions.maxRequests ?? "all",
+          delayMs: activeOptions.delayMs,
+          budgetExhausted: false,
+          skippedOutOfScope: 0,
+          failedRequests: 0,
+        };
+        const audit: ActiveRun["audit"] = (event) =>
+          repository.appendAudit(project.getId(), {
+            runId: summary.runId,
+            time: new Date().toISOString(),
+            scopeId: scope.id,
+            host: normalized,
+            requestBudget: summary.requestBudget,
+            delayMs: summary.delayMs,
+            ...event,
+          });
+        let started = false;
+        try {
+          await audit({ type: "start" });
+          started = true;
+          const findings = await buildHostJsRecon(sdk, scope.id, normalized, {
+            projectId: project.getId(),
+            options: activeOptions,
+            summary,
+            pacing,
+            audit,
+          });
+          await repository.save(project.getId(), findings);
+          await audit({ type: "finish", outcome: "completed" });
+          return ok(findings);
+        } catch (error: unknown) {
+          if (started) {
+            try {
+              await audit({
+                type: "finish",
+                outcome: `failed: ${errorMessage(error)}`,
+              });
+            } catch {
+              // An unavailable audit store must never permit another send.
+            }
+          }
+          return err(errorMessage(error));
+        }
+      } catch (error: unknown) {
+        return err(errorMessage(error));
+      } finally {
+        if (activeOptions !== undefined) activeRunInProgress = false;
+      }
+    },
+    listAudit: async (host, scopeId) => {
+      const normalized = normalizeHostname(host);
+      if (normalized === undefined) return err(`Invalid host "${host}".`);
+      try {
+        const project = await sdk.projects.getCurrent();
+        if (project === undefined)
+          return err("No Caido project is currently selected.");
+        const scope = await resolveScope(sdk, scopeId);
+        return ok(
+          await repository.listAudit(project.getId(), scope.id, normalized),
+        );
+      } catch (error: unknown) {
+        return err(errorMessage(error));
+      }
+    },
+  };
+};

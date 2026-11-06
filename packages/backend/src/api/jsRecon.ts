@@ -1,4 +1,4 @@
-import type { JsReconFindings, Result } from "shared";
+import type { JsReconFindings, JsReconScanOptions, Result } from "shared";
 
 import type { JsReconService } from "../services";
 import type { BackendSDK } from "../types";
@@ -8,11 +8,11 @@ type JsReconApi = {
     sdk: BackendSDK,
     host: string,
     scopeId?: string,
-    throttleMs?: number,
+    options?: JsReconScanOptions,
   ) => Promise<Result<JsReconFindings>>;
 };
 
 export const createJsReconApi = (service: JsReconService): JsReconApi => ({
-  getJsRecon: (_sdk, host, scopeId, throttleMs) =>
-    service.scan(host, scopeId, throttleMs),
+  getJsRecon: (_sdk, host, scopeId, options) =>
+    service.scan(host, scopeId, options),
 });

@@ -1,8 +1,20 @@
 <script setup lang="ts">
 import Button from "primevue/button";
 import Select from "primevue/select";
-import type { ApiRoute, JsReconFindings } from "shared";
-import { DEFAULT_ACTIVE_FETCH_DELAY_MS } from "shared";
+import type {
+  ApiRoute,
+  JsReconActiveOptions,
+  JsReconFindings,
+  JsReconScanOptions,
+} from "shared";
+import {
+  DEFAULT_ACTIVE_FETCH_DELAY_MS,
+  DEFAULT_CAPPED_REQUEST_BUDGET,
+  MAX_ACTIVE_FETCH_DELAY_MS,
+  MAX_ACTIVE_REQUEST_BUDGET,
+  MIN_ACTIVE_FETCH_DELAY_MS,
+  validateActiveReconOptions,
+} from "shared";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { RouteTreeCanvas, useApiMap } from "../../../routeTree";
@@ -250,6 +262,8 @@ const drillOut = (): void => {
 watch([() => project.value?.id, selectedScopeId], () => {
   jsReconGeneration += 1;
   jsReconLoading.value = false;
+  activeSourceMapFetch.value = false;
+  limitJsReconRequests.value = false;
   jsReconByHost.value = new Map();
   if (drillHost.value !== undefined) drillOut();
 });
@@ -308,7 +322,13 @@ const openInReplay = async (requestId: string): Promise<void> => {
 
 const jsReconByHost = ref(new Map<string, JsReconFindings>());
 const jsReconLoading = ref(false);
-const jsReconThrottle = ref(DEFAULT_ACTIVE_FETCH_DELAY_MS);
+const activeSourceMapFetch = ref(false);
+const limitJsReconRequests = ref(false);
+const jsReconBudget = ref(DEFAULT_CAPPED_REQUEST_BUDGET);
+const jsReconDelayMs = ref(DEFAULT_ACTIVE_FETCH_DELAY_MS);
+watch(activeSourceMapFetch, (enabled) => {
+  if (!enabled) limitJsReconRequests.value = false;
+});
 let jsReconGeneration = 0;
 const selectedJsRecon = computed(() => {
   const hostname = selectedHostname.value;
@@ -317,20 +337,37 @@ const selectedJsRecon = computed(() => {
 const showAllReconEvidence = ref(false);
 watch(selectedHostname, () => {
   showAllReconEvidence.value = false;
+  activeSourceMapFetch.value = false;
+  limitJsReconRequests.value = false;
 });
 
 const scanJsRecon = async (): Promise<void> => {
   const hostname = selectedHostname.value;
   if (hostname === undefined || jsReconLoading.value) return;
+  const active: JsReconActiveOptions | undefined = activeSourceMapFetch.value
+    ? {
+        delayMs: jsReconDelayMs.value,
+        ...(limitJsReconRequests.value
+          ? { maxRequests: jsReconBudget.value }
+          : {}),
+      }
+    : undefined;
+  activeSourceMapFetch.value = false;
+  limitJsReconRequests.value = false;
+  if (active !== undefined) {
+    const error = validateActiveReconOptions(active);
+    if (error !== undefined) {
+      sdk.window.showToast(error, { variant: "error" });
+      return;
+    }
+  }
+  const options: JsReconScanOptions | undefined =
+    active === undefined ? undefined : { active };
   const generation = ++jsReconGeneration;
   const scopeId = selectedScopeId.value;
   jsReconLoading.value = true;
   try {
-    const result = await sdk.backend.getJsRecon(
-      hostname,
-      scopeId,
-      jsReconThrottle.value,
-    );
+    const result = await sdk.backend.getJsRecon(hostname, scopeId, options);
     if (generation !== jsReconGeneration) return;
     if (result.kind === "Error") {
       sdk.window.showToast(result.error, { variant: "error" });
@@ -603,15 +640,45 @@ const copyReconEndpoints = (): void => {
                   ></template
                 ></span
               >
-              <input
-                v-model.number="jsReconThrottle"
-                type="number"
-                min="0"
-                step="100"
-                class="graphx-recon-throttle"
-                title="Delay between live source-map fetches (ms); 0 disables throttling"
-                aria-label="Source-map fetch delay in milliseconds"
-              />
+            </div>
+            <label class="graphx-recon-consent">
+              <input v-model="activeSourceMapFetch" type="checkbox" />
+              <span>
+                Enable active source-map fetch (sends scope-checked traffic).
+                Unchecked scans use captured traffic only. With no request
+                limit, every discovered missing in-scope map is attempted; a
+                scan may take a long time, with at least 1 second between
+                requests.
+              </span>
+            </label>
+            <div v-if="activeSourceMapFetch" class="graphx-recon-options">
+              <label class="graphx-recon-request-limit">
+                <input v-model="limitJsReconRequests" type="checkbox" />
+                Limit requests (otherwise All)
+              </label>
+              <label v-if="limitJsReconRequests">
+                Maximum requests (1–{{ MAX_ACTIVE_REQUEST_BUDGET }})
+                <input
+                  v-model.number="jsReconBudget"
+                  type="number"
+                  min="1"
+                  :max="MAX_ACTIVE_REQUEST_BUDGET"
+                  step="1"
+                />
+              </label>
+              <label>
+                Minimum delay between requests (ms;
+                {{ MIN_ACTIVE_FETCH_DELAY_MS }}–{{ MAX_ACTIVE_FETCH_DELAY_MS }})
+                <input
+                  v-model.number="jsReconDelayMs"
+                  type="number"
+                  :min="MIN_ACTIVE_FETCH_DELAY_MS"
+                  :max="MAX_ACTIVE_FETCH_DELAY_MS"
+                  step="1"
+                />
+              </label>
+            </div>
+            <div class="graphx-assets-header graphx-recon-action">
               <button
                 type="button"
                 :disabled="jsReconLoading"
@@ -629,6 +696,32 @@ const copyReconEndpoints = (): void => {
             <template v-if="selectedJsRecon">
               <p v-if="selectedJsRecon.truncated" class="graphx-assets-more">
                 Recon sweep truncated — data may be incomplete.
+              </p>
+              <p class="graphx-recon-summary">
+                Referenced maps missing from captured traffic before active
+                requests: {{ selectedJsRecon.missingMapReferences }}.
+              </p>
+              <p
+                v-if="selectedJsRecon.activeRecon"
+                class="graphx-recon-summary"
+              >
+                Active source-map fetch:
+                {{ selectedJsRecon.activeRecon.requestsSent }} requests sent
+                <template
+                  v-if="selectedJsRecon.activeRecon.requestBudget !== 'all'"
+                >
+                  (limit {{ selectedJsRecon.activeRecon.requestBudget }})
+                </template>
+                · {{ selectedJsRecon.activeRecon.failedRequests }} failed ·
+                {{ selectedJsRecon.activeRecon.skippedOutOfScope }} out of scope
+                · run <code>{{ selectedJsRecon.activeRecon.runId }}</code>
+                <template v-if="selectedJsRecon.activeRecon.budgetExhausted">
+                  · request limit reached; some maps were not attempted
+                </template>
+                <span class="graphx-recon-limitation">
+                  Attempts do not guarantee retrieval: 403 responses, network
+                  failures, and out-of-scope maps can remain inaccessible.
+                </span>
               </p>
               <small v-if="selectedJsRecon.evidence.length > 0">
                 Leads · {{ selectedJsRecon.evidence.length }} representative

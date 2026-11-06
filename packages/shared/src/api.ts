@@ -1,5 +1,5 @@
 import type { ApiRoute } from "./domainGraph/apiMap";
-import type { JsReconFindings } from "./jsRecon";
+import type { JsReconFindings, JsReconScanOptions } from "./jsRecon";
 import type { ProjectContext } from "./project";
 import type { Result } from "./result";
 
@@ -23,6 +23,6 @@ export type API = {
   getJsRecon: (
     host: string,
     scopeId?: string,
-    throttleMs?: number,
+    options?: JsReconScanOptions,
   ) => Promise<Result<JsReconFindings>>;
 };

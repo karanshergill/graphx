@@ -29,36 +29,81 @@ export type JsReconExtraction = {
   evidence: JsReconEvidence[];
 };
 
+export type JsReconActiveOptions = {
+  delayMs: number;
+  maxRequests?: number;
+};
+
+export type JsReconScanOptions = {
+  active?: JsReconActiveOptions;
+};
+
+export type JsReconActiveSummary = {
+  runId: string;
+  requestsSent: number;
+  requestBudget: number | "all";
+  delayMs: number;
+  budgetExhausted: boolean;
+  skippedOutOfScope: number;
+  failedRequests: number;
+};
+
 export type JsReconFindings = JsReconExtraction & {
   host: string;
   generatedAt: string;
   bundlesScanned: number;
   sourceMapsScanned: number;
+  missingMapReferences: number;
   sourceMaps: string[];
   sourceMapsBlocked: string[];
   sourceMapsFetched: string[];
   sourceMapsInline: string[];
   sourceModules: string[];
   truncated: boolean;
+  activeRecon?: JsReconActiveSummary;
 };
 
 const STRING_LITERAL =
   /"((?:[^"\\]|\\.){1,300})"|'((?:[^'\\]|\\.){1,300})'|`((?:[^`\\]|\\.){1,300})`/g;
 
+export const DEFAULT_CAPPED_REQUEST_BUDGET = 10;
+export const MAX_ACTIVE_REQUEST_BUDGET = 20;
+export const MIN_ACTIVE_FETCH_DELAY_MS = 1_000;
 export const DEFAULT_ACTIVE_FETCH_DELAY_MS = 2_000;
+export const MAX_ACTIVE_FETCH_DELAY_MS = 60_000;
 
-// Caller-controlled delay between live source-map fetches. Missing or
-// invalid values fall back to the default; 0 disables throttling explicitly.
-export const normalizeThrottleMs = (value: unknown): number => {
-  if (value === undefined || value === null || value === "") {
-    return DEFAULT_ACTIVE_FETCH_DELAY_MS;
+export const validateActiveReconOptions = (
+  value: unknown,
+): string | undefined => {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.keys(value).some((key) => key !== "maxRequests" && key !== "delayMs")
+  ) {
+    return "Active recon requires a delay in milliseconds and an optional request budget.";
   }
-  const parsed = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return DEFAULT_ACTIVE_FETCH_DELAY_MS;
+  const { maxRequests, delayMs } = value as Partial<JsReconActiveOptions>;
+  if (
+    "maxRequests" in value &&
+    (typeof maxRequests !== "number" ||
+      !Number.isInteger(maxRequests) ||
+      maxRequests < 1 ||
+      maxRequests > MAX_ACTIVE_REQUEST_BUDGET)
+  ) {
+    return `Request budget must be a whole number from 1 to ${MAX_ACTIVE_REQUEST_BUDGET}.`;
   }
-  return Math.floor(parsed);
+  if (
+    typeof delayMs !== "number" ||
+    !Number.isInteger(delayMs) ||
+    delayMs < MIN_ACTIVE_FETCH_DELAY_MS ||
+    delayMs > MAX_ACTIVE_FETCH_DELAY_MS
+  ) {
+    return `Fetch delay must be a whole number from ${MIN_ACTIVE_FETCH_DELAY_MS} to ${MAX_ACTIVE_FETCH_DELAY_MS} milliseconds.`;
+  }
+  return undefined;
 };
+
 const TEMPLATE_EXPR = /\$\{[^}]*\}/g;
 const ABSOLUTE_URL = /^https?:\/\/\S+$/i;
 const PATH_LIKE = /^\/[A-Za-z0-9._~!$&()*+,;=:@%/-]+$/;

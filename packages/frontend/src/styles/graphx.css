@@ -640,21 +640,74 @@
   outline: none;
 }
 
-.graphx-assets-header .graphx-recon-throttle {
+.graphx-recon-action {
+  justify-content: flex-end;
+}
+
+.graphx-recon-consent {
+  align-items: flex-start;
+  color: var(--p-text-color);
+  display: flex;
+  font-size: 0.72rem;
+  gap: 0.45rem;
+}
+
+.graphx-recon-consent input {
+  accent-color: var(--p-primary-color);
+  flex: 0 0 auto;
+  margin: 0.1rem 0 0;
+}
+
+.graphx-recon-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.graphx-recon-options label {
+  color: var(--p-text-muted-color);
+  display: flex;
+  flex-direction: column;
+  font-size: 0.68rem;
+  gap: 0.2rem;
+}
+.graphx-recon-options .graphx-recon-request-limit {
+  align-items: center;
+  flex-direction: row;
+}
+
+.graphx-recon-request-limit input {
+  accent-color: var(--p-primary-color);
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+
+.graphx-recon-options input[type="number"] {
   background: transparent;
   border: 1px solid var(--p-content-border-color);
   border-radius: 0.35rem;
   color: var(--p-text-color);
-  font-size: 0.68rem;
-  margin-left: auto;
-  padding: 0.15rem 0.35rem;
-  text-align: right;
-  width: 4.5rem;
+  font-size: 0.72rem;
+  padding: 0.2rem 0.35rem;
+  width: 6rem;
 }
 
-.graphx-assets-header .graphx-recon-throttle:focus-visible {
-  border-color: var(--p-primary-color);
-  outline: none;
+.graphx-recon-options input:focus-visible,
+.graphx-recon-consent input:focus-visible {
+  outline: 2px solid var(--p-primary-color);
+  outline-offset: 2px;
+}
+
+.graphx-recon-summary {
+  color: var(--p-text-muted-color);
+  font-size: 0.7rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.graphx-recon-limitation {
+  display: block;
 }
 
 .graphx-assets ul {

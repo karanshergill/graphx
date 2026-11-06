@@ -34,7 +34,7 @@ Caido Sitemap root query + subscriptions       │
                                          Sigma/WebGL              Canvas 2D fallback
 ```
 
-This diagram covers domain-graph ingestion and rendering: it reads local Caido data and does not contact targets. On-demand JS recon is separate and can request missing, in-scope source maps referenced by observed bundles (see `features/GX-DOM-010.md`).
+This diagram covers domain-graph ingestion and rendering: it reads local Caido data and does not contact targets. On-demand JS recon is passive by default; the frontend may explicitly enable rate-limited, audited in-scope source-map requests for one scan (see `features/GX-DOM-010.md`).
 
 ## Package boundaries
 
@@ -55,7 +55,7 @@ The module has no Vue, Sigma, browser, Caido runtime, or network dependency. It 
 
 `packages/backend` exposes typed project context, emits project lifecycle changes, owns GraphX's durable annotations, and serves the agent HTTP API. Domain ingestion does not need durable plugin storage because the Caido Sitemap is already the durable source of truth for that data.
 
-The agent API (`backend/agentapi/`) runs a minimal HTTP/1.1 responder over an LLRT TCP listener bound to `127.0.0.1:8771`. It rebuilds domain graphs and asset groupings server-side via backend `sdk.graphql.execute` plus shared pure logic. `/health`, `/marks`, `/domains`, `/assets`, `/api-map`, and `/brief` return local data as JSON; `/js-recon` scans observed JavaScript and can request missing in-scope source maps, then persists findings in project-scoped SQLite.
+The agent API (`backend/agentapi/`) runs a minimal HTTP/1.1 responder over an LLRT TCP listener bound to `127.0.0.1:8771`. It rebuilds domain graphs and asset groupings server-side via backend `sdk.graphql.execute` plus shared pure logic. `/health`, `/marks`, `/domains`, `/assets`, `/api-map`, and `/brief` return local data as JSON; `GET /js-recon` scans captured JavaScript and persists findings without sending requests to targets. Active source-map fetches require one-scan frontend consent and a nonzero delay; the default is to attempt every discovered, in-scope missing map, with an optional operator-chosen request cap. An append-only, project-scoped SQLite audit is readable through `GET /js-recon/audit`.
 
 Domain marks are the first GraphX-owned data: `backend/repositories/marks.ts` stores them in the plugin SQLite database from `sdk.meta.db()` (table `domain_marks`, keyed by project id and normalized hostname), behind the service/API layering (`api → services → repositories`). Mark changes emit a typed `domainMarks:changed` event.
 

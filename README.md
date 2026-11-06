@@ -13,7 +13,7 @@ GraphX is a native Caido extension for exploring relationships in project data. 
 - **API map drill-down** — a Swagger-like route map per host, built sitemap-first from your own traffic, with captured request samples for each route.
 - **Search and keyboard-first navigation** — `/` or `Ctrl/Cmd+K` to jump to any domain.
 - **Agent API** — GET + JSON on `127.0.0.1:8771` so automation can query the estate model.
-- **On-demand JS recon** — scans observed JavaScript bodies and source maps, retaining a source location for each lead; it may request referenced, previously unobserved source maps from in-scope target hosts.
+- **On-demand JS recon** — passively scans all observed JavaScript bodies and source maps, retaining a source location for each lead; explicitly opting in for one scan attempts every missing in-scope referenced map by default, with rate control and an optional request cap.
 
 ## Current behavior
 
@@ -43,9 +43,18 @@ Install `dist/plugin_package.zip` from Caido's Plugins page, then select **Graph
 
 Route details show up to eight representative captured requests (one per method/status combination). **History** locates the original request row; **Replay** creates and opens a draft without sending it. JS recon shows an asset or original source-map module and a 1-based line and column for each deduplicated lead, with the same pivots when a captured request exists.
 
+JS recon reads captured traffic by default. To request missing source maps from
+a target, check **Enable active source-map fetch** for that scan. Active scans
+attempt every discovered in-scope missing map by default (which can take time);
+optionally enable a 1–20 request limit. Sends are spaced by at least 1,000 ms
+(default 2,000 ms). The consent and optional limit reset after each attempt.
+The panel shows how many missing references were discovered; failed responses
+and out-of-scope URLs may still remain unfetched. Every active attempt is
+audited per project in SQLite.
+
 ## Agent API
 
-The backend plugin serves a GET + JSON API on `127.0.0.1:8771` (loopback only, no auth). Most routes read local Caido or plugin data; `/js-recon` also saves findings and can send in-scope requests for missing source maps referenced by observed bundles:
+The backend plugin serves a GET + JSON API on `127.0.0.1:8771` (loopback only, no auth). `GET /js-recon` scans only locally captured responses and saves findings; it never sends target traffic. Active source-map fetching is available only through the explicit GraphX UI controls, not through this unauthenticated API. The audit endpoint lists recent active recon events for the selected project, scope, and host:
 
 ```bash
 curl -s 127.0.0.1:8771/health                  # liveness + version
@@ -54,7 +63,8 @@ curl -s "127.0.0.1:8771/domains?scope=Example" # full domain graph JSON
 curl -s "127.0.0.1:8771/assets?scope=Example"  # per-host JS bundle/map groupings
 curl -s "127.0.0.1:8771/brief?scope=Example"   # composite estate brief (session start)
 curl -s "127.0.0.1:8771/api-map?host=api.example.com"  # per-host route map (Swagger-like templates)
-curl -s "127.0.0.1:8771/js-recon?host=app.example.com" # scan JS bodies; may fetch missing in-scope source maps
+curl -s "127.0.0.1:8771/js-recon?host=app.example.com"       # passive JS scan; no target requests
+curl -s "127.0.0.1:8771/js-recon/audit?host=app.example.com" # recent active-scan audit events
 ```
 
 `?scope=` takes a scope id or name and may be omitted when only one scope exists. All routes are GET + JSON; errors are `{ "error": string }`. See `docs/features/GX-DOM-007.md` and `docs/features/GX-DOM-010.md`.
