@@ -44,6 +44,7 @@ type RequestNode = {
   query?: string;
   isTls?: boolean;
   port?: number;
+  response?: { statusCode: number };
 };
 
 type JsRequestPage = {
@@ -100,7 +101,7 @@ const sweepCandidates = async (
   for (;;) {
     const data = await execute<JsRequestPage>(
       sdk,
-      "query($scopeId: ID, $filter: HTTPQLInput, $first: Int, $after: String, $order: RequestResponseOrderInput) { requests(scopeId: $scopeId, filter: $filter, first: $first, after: $after, order: $order) { edges { cursor node { id path query isTls port } } pageInfo { endCursor hasNextPage } } }",
+      "query($scopeId: ID, $filter: HTTPQLInput, $first: Int, $after: String, $order: RequestResponseOrderInput) { requests(scopeId: $scopeId, filter: $filter, first: $first, after: $after, order: $order) { edges { cursor node { id path query isTls port response { statusCode } } } pageInfo { endCursor hasNextPage } } }",
       {
         scopeId,
         filter: { code: filter },
@@ -112,6 +113,8 @@ const sweepCandidates = async (
 
     const candidates: Candidate[] = [];
     for (const { node } of data.requests.edges) {
+      // A revalidation has no body; keep its URL available for an older 200.
+      if (node.response?.statusCode === 304) continue;
       const query = node.query ?? "";
       const key = query === "" ? node.path : `${node.path}?${query}`;
       const url = new URL(key, originOf(node, host)).toString();

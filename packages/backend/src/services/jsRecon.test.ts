@@ -40,6 +40,7 @@ const fixture = (
     };
     observedMaps?: { path: string; query?: string; body?: string }[];
     blockedMaps?: { path: string; query?: string }[];
+    responseOverrides?: Record<string, { statusCode: number; body: string }>;
     pagination?: (
       page: number,
       after?: string,
@@ -81,10 +82,14 @@ const fixture = (
           const map = variables.id.startsWith("m")
             ? options.observedMaps?.[index]
             : undefined;
-          const raw =
-            map === undefined
-              ? `HTTP/1.1 200 OK\r\n\r\n//# sourceMappingURL=${options.reference?.(index) ?? `/bundle${index}.js.map`}`
-              : `HTTP/1.1 200 OK\r\n\r\n${map.body ?? '{"version":3,"sources":["original.ts"],"mappings":""}'}`;
+          const override = options.responseOverrides?.[variables.id];
+          const body =
+            override?.body ??
+            (map === undefined
+              ? `//# sourceMappingURL=${options.reference?.(index) ?? `/bundle${index}.js.map`}`
+              : (map.body ??
+                '{"version":3,"sources":["original.ts"],"mappings":""}'));
+          const raw = `HTTP/1.1 ${override?.statusCode ?? 200} ${override?.statusCode === 304 ? "Not Modified" : "OK"}\r\n\r\n${body}`;
           return Promise.resolve({
             data: {
               request: {
@@ -128,14 +133,20 @@ const fixture = (
               : (isBlocked ? options.blockedMaps : options.observedMaps)?.[
                   current
                 ];
+            const id = `${isJs ? "r" : isBlocked ? "b" : "m"}${current}`;
             return {
               cursor: `c${current}`,
               node: {
-                id: `${isJs ? "r" : isBlocked ? "b" : "m"}${current}`,
+                id,
                 path: map?.path ?? `/bundle${current}.js`,
                 ...(map?.query === undefined ? {} : { query: map.query }),
                 isTls: true,
                 ...(isJs ? (options.bundleLocation?.(current) ?? {}) : {}),
+                response: {
+                  statusCode:
+                    options.responseOverrides?.[id]?.statusCode ??
+                    (isBlocked ? 403 : 200),
+                },
               },
             };
           },
@@ -503,6 +514,54 @@ describe("JS recon backend safety", () => {
         page.filter.includes('req.path.like:"%.js"'),
       ),
     ).toHaveLength(11);
+  });
+
+  it("uses earlier captured bodies when a newer JS or map response is 304", async () => {
+    const { sdk, send } = fixture(2, {
+      bundleLocation: () => ({ path: "/app.js" }),
+      observedMaps: [{ path: "/app.js.map" }, { path: "/app.js.map" }],
+      responseOverrides: {
+        r0: { statusCode: 304, body: "" },
+        r1: {
+          statusCode: 200,
+          body: 'fetch("/api/revalidated");\n//# sourceMappingURL=/app.js.map',
+        },
+        m0: { statusCode: 304, body: "" },
+        m1: {
+          statusCode: 200,
+          body: JSON.stringify({
+            version: 3,
+            sources: ["module.ts"],
+            sourcesContent: ['fetch("/api/from-map")'],
+            mappings: "",
+          }),
+        },
+      },
+    });
+    const { repo } = memoryRepository();
+    const result = await createJsReconService(sdk, repo).scan(
+      "example.com",
+      "scope-a",
+    );
+    expect(result.kind).toBe("Ok");
+    if (result.kind !== "Ok") return;
+    expect(result.value.endpoints).toEqual([
+      "/api/from-map",
+      "/api/revalidated",
+    ]);
+    expect(result.value.sourceMaps).toEqual(["/app.js.map"]);
+    expect(result.value.sourceModules).toEqual(["module.ts"]);
+    expect(result.value.missingMapReferences).toBe(0);
+    expect(result.value.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          value: "/api/revalidated",
+          requestId: "r1",
+        }),
+        expect.objectContaining({ value: "/api/from-map", requestId: "m1" }),
+      ]),
+    );
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("discovers a new reference after the former 2,000-bundle ceiling", async () => {

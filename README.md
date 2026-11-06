@@ -43,10 +43,12 @@ Install `dist/plugin_package.zip` from Caido's Plugins page, then select **Graph
 
 Route details show up to eight representative captured requests (one per method/status combination). **History** locates the original request row; **Replay** creates and opens a draft without sending it. JS recon shows an asset or original source-map module and a 1-based line and column for each deduplicated lead, with the same pivots when a captured request exists.
 
-JS recon reads captured traffic by default. To request missing source maps from
-a target, check **Enable active source-map fetch** for that scan. Active scans
-attempt every discovered in-scope missing map by default (which can take time);
-optionally enable a 1–20 request limit. Sends are spaced by at least 1,000 ms
+JS recon reads captured traffic by default. A captured `304` revalidation does
+not hide an earlier `200` JS or source-map body at the same URL. To request
+missing source maps from a target, check **Enable active source-map fetch** for
+that scan. Active scans attempt every discovered in-scope missing map by
+default (which can take time); optionally enable a 1–20 request limit. Sends
+are spaced by at least 1,000 ms
 (default 2,000 ms). The consent and optional limit reset after each attempt.
 The panel shows how many missing references were discovered; failed responses
 and out-of-scope URLs may still remain unfetched. Every active attempt is
