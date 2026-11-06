@@ -117,6 +117,6 @@ observed bundles are fetched only after a one-scan opt-in in the GraphX UI.
 | R2 | Complete, paginated local response sweep and explicitly opted-in, scope-checked live source-map requests | `services/jsRecon.ts` | No static candidate ceiling; default active scan attempts all missing in-scope maps; passive calls send no target traffic |
 | R3 | Per-project persistence | `repositories/jsRecon.ts` | live: row in plugin `data.db` `js_recon` (2026-08-26) |
 | R4 | Passive agent route and read-only audit route | `GET /js-recon`, `GET /js-recon/audit` in `agentapi/routes.ts` | GET with legacy active flags rejected; active requests only from UI |
-| R5 | UI panel | `DomainGraphPage/Container.vue` | vue-tsc; build |
+| R5 | UI panel | `DomainGraphPage/Container.vue` | vue-tsc; build; Caido 0.59 passive scan: one captured bundle, one endpoint, one missing map |
 | R6 | Captured source provenance and native Caido pivots | `shared/src/jsRecon.ts`, `services/jsRecon.ts`, `DomainGraphPage/Container.vue` | Model tests for multiline positions, source-map priority and no fabricated live-map ID; typed frontend build. |
 | R7 | Per-run consent, rate control, optional cap, and persistent audit | `DomainGraphPage/Container.vue`, `services/jsRecon.ts`, `repositories/jsRecon.ts` | Exhaustive/optional-cap, rate and fail-closed tests plus UI smoke |

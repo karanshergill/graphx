@@ -13,6 +13,7 @@ type JsReconApi = {
 };
 
 export const createJsReconApi = (service: JsReconService): JsReconApi => ({
+  // Caido can serialize omitted optional RPC arguments as null.
   getJsRecon: (_sdk, host, scopeId, options) =>
-    service.scan(host, scopeId, options),
+    service.scan(host, scopeId ?? undefined, options ?? undefined),
 });

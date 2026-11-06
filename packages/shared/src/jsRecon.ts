@@ -196,7 +196,7 @@ const DROPPED_ENDPOINT_SEGMENTS = [
   "/node_modules/",
 ];
 
-// Regex instead of `new URL()` — the backend runtime (QuickJS) has no URL.
+// Only the host is needed for noise filtering; avoid parsing every literal as a URL.
 const ABSOLUTE_URL_HOST = /^https?:\/\/([^/:?#]+)/i;
 
 const shouldDropEndpoint = (value: string): boolean => {

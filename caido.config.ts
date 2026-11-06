@@ -11,7 +11,7 @@ export default defineConfig({
   id,
   name: "GraphX",
   description: "Interactive relationship graphs for Caido project scope data",
-  version: "0.3.0",
+  version: "0.3.1",
   author: {
     name: "Karan Shergill",
   },

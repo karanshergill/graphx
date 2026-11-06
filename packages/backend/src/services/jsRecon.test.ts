@@ -1,9 +1,11 @@
 import { Buffer } from "buffer";
 import { DatabaseSync } from "node:sqlite";
 
+import type { JsReconScanOptions } from "shared";
 import { describe, expect, it, type Mock, vi } from "vitest";
 
 import { createAgentRoutes } from "../agentapi/routes";
+import { createJsReconApi } from "../api/jsRecon";
 import {
   createJsReconRepository,
   type JsReconAuditEvent,
@@ -480,12 +482,15 @@ describe("JS recon backend safety", () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
-  it("scans every local page including bundles beyond the former 2,000 cap without target sends", async () => {
+  it("treats omitted Caido RPC arguments as passive and scans every local page", async () => {
     const { sdk, send, requestedPages } = fixture(2_050);
     const { repo } = memoryRepository();
-    const result = await createJsReconService(sdk, repo).scan(
+    const api = createJsReconApi(createJsReconService(sdk, repo));
+    const result = await api.getJsRecon(
+      sdk,
       "example.com",
-      "scope-a",
+      null as unknown as string,
+      null as unknown as JsReconScanOptions,
     );
     expect(result.kind).toBe("Ok");
     if (result.kind !== "Ok") return;
