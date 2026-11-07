@@ -38,9 +38,9 @@ observed bundles are fetched only after a one-scan opt-in in the GraphX UI.
   connection (scope-pinned, case-insensitive host match including explicit
   ports, `%.js`/`%.mjs`, status < 400, newest first), dedupes by full
   URL including scheme, port, path, and query (cache-busted variants and
-  HTTP/HTTPS responses remain distinct), and fetches bodies via
-  `request(id) → response.raw` (base64 raw HTTP; body
-  starts after the first CRLFCRLF) in batches of 16 parallel requests. It
+  HTTP/HTTPS responses remain distinct), and reads headers and bodies via
+  `request(id) → response.raw` (base64 raw HTTP; body starts after the first
+  CRLFCRLF) in batches of 16 parallel requests. It
   merges per-bundle extractions with `mergeJsRecon`. Note: the plugin SDK's
   `sdk.requests.query()` helper returned zero items for filters that match
   via GraphQL — the sweep deliberately uses `sdk.graphql.execute` instead
@@ -58,10 +58,12 @@ observed bundles are fetched only after a one-scan opt-in in the GraphX UI.
   findings. `sourceMaps` lists the observed map paths — the exploitation lead
   list. Maps that answered 4xx/5xx are listed separately as
   `sourceMapsBlocked`: they exist but bodies are forbidden — bypass leads.
-- Beyond passive data: every scanned bundle's last `//# sourceMappingURL=` is
-  resolved against the bundle URL with `new URL` (relative, root-relative,
-  protocol-relative, or same-host absolute; dot segments normalized, query
-  and port preserved for the fetch). Inline
+- Every scanned bundle's HTTP `SourceMap` response header (case-insensitive)
+  is checked first, even when the bundle has no `sourceMappingURL` footer.
+  Without a usable header GraphX uses the last `//# sourceMappingURL=`. The
+  selected map reference is resolved against the bundle URL with `new URL`
+  (relative, root-relative, protocol-relative, or same-host absolute; dot
+  segments normalized, query and port preserved for the fetch). Inline
   `data:…;base64` maps are decoded in place (`sourceMapsInline`). The operator
   can opt in to actively fetching missing map references for **one** scan in
   the UI. By default the opted-in run attempts **all discovered, in-scope**
@@ -130,3 +132,4 @@ observed bundles are fetched only after a one-scan opt-in in the GraphX UI.
 | R6 | Captured source provenance and native Caido pivots | `shared/src/jsRecon.ts`, `services/jsRecon.ts`, `DomainGraphPage/Container.vue` | Model tests for multiline positions, source-map priority and no fabricated live-map ID; typed frontend build. |
 | R7 | Per-run consent, rate control, optional cap, and persistent audit | `DomainGraphPage/Container.vue`, `services/jsRecon.ts`, `repositories/jsRecon.ts` | Exhaustive/optional-cap, rate and fail-closed tests plus UI smoke |
 | R8 | Preserve observed origins when copying endpoint leads. | `services/jsRecon.ts`, `DomainGraphPage/Container.vue` | Backend tests cover HTTP, HTTPS, non-default ports, and captured map sources; installed Caido API and UI-generated copy text retained `http://localhost:4175/`. |
+| R9 | Discover maps from captured HTTP `SourceMap` headers before bundle footers | `services/jsRecon.ts` | Header-only and conflicting-footer regression tests; installed Caido passive scan displayed both captured maps and their original-source endpoints without active fetch. |

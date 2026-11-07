@@ -83,12 +83,28 @@ const MAP_PATH_CLAUSE = '(req.path.like:"%.map")';
 const STATUS_OK = "resp.code.lt:400";
 const STATUS_BLOCKED = "resp.code.gte:400";
 
-// `raw` is the base64-encoded raw HTTP response (status line, headers, body).
-const decodeBody = (raw: string): string | undefined => {
-  const text = Buffer.from(raw, "base64").toString("utf-8");
-  const separator = text.indexOf("\r\n\r\n");
-  if (separator === -1) return undefined;
-  return text.slice(separator + 4);
+const findSourceMapHeader = (
+  response: string,
+  headerEnd: number,
+): string | undefined => {
+  const name = "sourcemap";
+  let start = response.indexOf("\r\n");
+  if (start === -1 || start >= headerEnd) return undefined;
+  start += 2; // Skip the HTTP status line.
+  while (start < headerEnd) {
+    const end = response.indexOf("\r\n", start);
+    if (end === -1 || end > headerEnd) return undefined;
+    const colon = start + name.length;
+    if (
+      response.charCodeAt(colon) === 58 &&
+      response.slice(start, colon).toLowerCase() === name
+    ) {
+      const ref = response.slice(colon + 1, end).trim();
+      if (ref !== "") return ref;
+    }
+    start = end + 2;
+  }
+  return undefined;
 };
 
 // Keep only one page's request nodes in memory. Dedupe across pages by URL,
@@ -151,7 +167,7 @@ const sweepCandidates = async (
   }
 };
 
-const fetchBodyText = async (
+const fetchResponseText = async (
   sdk: BackendSDK,
   id: string,
 ): Promise<string | undefined> => {
@@ -171,7 +187,8 @@ const fetchBodyText = async (
   }
   const raw = data.request?.response?.raw;
   if (typeof raw !== "string") return undefined;
-  return decodeBody(raw);
+  // `raw` includes the status line, response headers, and body.
+  return Buffer.from(raw, "base64").toString("utf-8");
 };
 
 const completed = Promise.resolve();
@@ -277,8 +294,11 @@ const buildHostJsRecon = async (
       normalized,
       buildFilter(normalized, JS_PATH_CLAUSE, STATUS_OK),
       async (candidate) => {
-        const text = await fetchBodyText(sdk, candidate.id);
-        if (text === undefined) return;
+        const response = await fetchResponseText(sdk, candidate.id);
+        if (response === undefined) return;
+        const headerEnd = response.indexOf("\r\n\r\n");
+        if (headerEnd === -1) return;
+        const text = response.slice(headerEnd + 4);
         bundlesScanned += 1;
         collectExtraction(
           extractJsRecon(text, {
@@ -288,7 +308,9 @@ const buildHostJsRecon = async (
           candidate.origin,
         );
 
-        const ref = findSourceMapRef(text);
+        // The HTTP SourceMap header takes precedence over sourceMappingURL.
+        const ref =
+          findSourceMapHeader(response, headerEnd) ?? findSourceMapRef(text);
         if (ref === undefined) return;
         if (ref.startsWith("data:")) {
           // Inline map: no fetch needed, decode in place.
@@ -324,9 +346,11 @@ const buildHostJsRecon = async (
       normalized,
       buildFilter(normalized, MAP_PATH_CLAUSE, STATUS_OK),
       async (candidate) => {
-        const text = await fetchBodyText(sdk, candidate.id);
-        if (text === undefined) return;
-        const recon = extractSourceMapRecon(text, {
+        const response = await fetchResponseText(sdk, candidate.id);
+        if (response === undefined) return;
+        const headerEnd = response.indexOf("\r\n\r\n");
+        if (headerEnd === -1) return;
+        const recon = extractSourceMapRecon(response.slice(headerEnd + 4), {
           assetPath: candidate.key,
           requestId: candidate.id,
         });

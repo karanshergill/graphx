@@ -47,7 +47,10 @@ Route details show up to eight representative captured requests (one per method/
 relative path can yield multiple distinct URLs. Leads with no known origin
 remain relative rather than being rewritten to HTTPS.
 
-JS recon reads captured traffic by default. A captured `304` revalidation does
+JS recon reads captured traffic by default. It follows captured HTTP
+`SourceMap` headers (case-insensitive), including bundles without a footer;
+those headers take precedence over a `//# sourceMappingURL=` footer. Captured
+maps are parsed without a target request. A captured `304` revalidation does
 not hide an earlier `200` JS or source-map body at the same URL. To request
 missing source maps from a target, check **Enable active source-map fetch** for
 that scan. Active scans attempt every discovered in-scope missing map by

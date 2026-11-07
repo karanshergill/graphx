@@ -51,7 +51,10 @@ const fixture = (
       isTls?: boolean;
       port?: number;
     }[];
-    responseOverrides?: Record<string, { statusCode: number; body: string }>;
+    responseOverrides?: Record<
+      string,
+      { statusCode: number; body: string; headers?: string[] }
+    >;
     pagination?: (
       page: number,
       after?: string,
@@ -100,7 +103,8 @@ const fixture = (
               ? `//# sourceMappingURL=${options.reference?.(index) ?? `/bundle${index}.js.map`}`
               : (map.body ??
                 '{"version":3,"sources":["original.ts"],"mappings":""}'));
-          const raw = `HTTP/1.1 ${override?.statusCode ?? 200} ${override?.statusCode === 304 ? "Not Modified" : "OK"}\r\n\r\n${body}`;
+          const headers = override?.headers?.join("\r\n");
+          const raw = `HTTP/1.1 ${override?.statusCode ?? 200} ${override?.statusCode === 304 ? "Not Modified" : "OK"}\r\n${headers === undefined || headers === "" ? "" : `${headers}\r\n`}\r\n${body}`;
           return Promise.resolve({
             data: {
               request: {
@@ -573,6 +577,68 @@ describe("JS recon backend safety", () => {
         expect.objectContaining({ value: "/api/from-map", requestId: "m1" }),
       ]),
     );
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("discovers header-only maps passively and fetches them only after consent", async () => {
+    const { sdk, send } = fixture(1, {
+      responseOverrides: {
+        r0: {
+          statusCode: 200,
+          headers: ["sOuRcEmAp: /header.js.map"],
+          body: 'fetch("/api/header-only");',
+        },
+      },
+    });
+    const { repo } = memoryRepository();
+    const service = createJsReconService(sdk, repo);
+    const passive = await service.scan("example.com", "scope-a");
+    expect(passive.kind).toBe("Ok");
+    if (passive.kind !== "Ok") return;
+    expect(passive.value.missingMapReferences).toBe(1);
+    expect(send).not.toHaveBeenCalled();
+
+    const activeRun = await service.scan("example.com", "scope-a", {
+      active: { delayMs: 1_000 },
+    });
+    expect(activeRun.kind).toBe("Ok");
+    if (activeRun.kind !== "Ok") return;
+    expect(send.mock.calls.map(([spec]) => spec.url)).toEqual([
+      "https://example.com/header.js.map",
+    ]);
+  });
+
+  it("uses SourceMap response headers instead of conflicting bundle footers", async () => {
+    const { sdk, send } = fixture(1, {
+      responseOverrides: {
+        r0: {
+          statusCode: 200,
+          headers: ["SourceMap: /header.js.map"],
+          body: 'fetch("/api/header");\n//# sourceMappingURL=/footer.js.map',
+        },
+      },
+      observedMaps: [
+        {
+          path: "/header.js.map",
+          body: JSON.stringify({
+            version: 3,
+            sources: ["original.ts"],
+            sourcesContent: ['fetch("/api/from-header")'],
+            mappings: "",
+          }),
+        },
+      ],
+    });
+    const { repo } = memoryRepository();
+    const result = await createJsReconService(sdk, repo).scan(
+      "example.com",
+      "scope-a",
+    );
+    expect(result.kind).toBe("Ok");
+    if (result.kind !== "Ok") return;
+    expect(result.value.sourceMaps).toEqual(["/header.js.map"]);
+    expect(result.value.missingMapReferences).toBe(0);
+    expect(result.value.endpoints).toEqual(["/api/from-header", "/api/header"]);
     expect(send).not.toHaveBeenCalled();
   });
 
