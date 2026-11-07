@@ -338,13 +338,8 @@ export const createSigmaDomainGraphRenderer = (
 
     onSelect(graph.getNodeAttribute(selectedNode, "hostname"));
     const displayData = renderer.getNodeDisplayData(selectedNode);
-    if (displayData !== undefined) {
-      renderer
-        .getCamera()
-        .setState(
-          renderer.graphToViewport({ x: displayData.x, y: displayData.y }),
-        );
-    }
+    if (displayData !== undefined)
+      renderer.getCamera().setState({ x: displayData.x, y: displayData.y });
     renderer.scheduleRefresh();
   };
 
@@ -356,13 +351,8 @@ export const createSigmaDomainGraphRenderer = (
     invalidateFocusSet();
     onSelect(hostname);
     const displayData = renderer.getNodeDisplayData(node);
-    if (displayData !== undefined) {
-      renderer
-        .getCamera()
-        .setState(
-          renderer.graphToViewport({ x: displayData.x, y: displayData.y }),
-        );
-    }
+    if (displayData !== undefined)
+      renderer.getCamera().setState({ x: displayData.x, y: displayData.y });
     renderer.scheduleRefresh();
   };
 

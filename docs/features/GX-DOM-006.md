@@ -21,6 +21,9 @@ to it, without scrolling or hunting through hundreds of nodes.
   (`focusNode` on the renderer interface, implemented by both renderers
   through the existing selection pipeline). The query stays in the box so the
   operator can jump between successive matches.
+- Arrow keys, `Home`, and `End` on the domain canvas also select and center
+  nodes. The WebGL renderer uses normalized node coordinates for the camera,
+  not viewport pixels, and keeps the current zoom and rotation.
 - Search is a pure view concern over the in-memory snapshot: no Caido queries,
   no target traffic, and it does not alter marks, connection-path, JS-asset,
   or combined emphasis modes.
@@ -34,6 +37,7 @@ to it, without scrolling or hunting through hundreds of nodes.
 | GX-DOM-603 | Live dropdown with mouse and full keyboard operation. | `components/DomainSearch` | Harness dropdown assertions. |
 | GX-DOM-604 | Global `/` and Ctrl/Cmd+K focus shortcuts, page-active only. | `DomainGraphPage` document keydown | Harness shortcut assertion. |
 | GX-DOM-605 | No new data source, no target traffic, no emphasis-mode interference. | In-memory snapshot only | Code review; no adapter changes. |
+| GX-DOM-606 | Keep WebGL search and keyboard navigation centered on the selected host. | `domainGraphRenderer.ts` `focusNode` and `selectByKeyboard` | Isolated Caido 0.59, confirmed Sigma renderer: search and Home previously moved the four-host graph off-screen; corrected search, all four arrows, Home, and End selected the expected hosts, with centered-node screenshots at default and zoomed views. Canvas 2D code unchanged. |
 
 ## Not part of this increment
 
