@@ -43,6 +43,12 @@ Install `dist/plugin_package.zip` from Caido's Plugins page, then select **Graph
 
 Route details show up to eight representative captured requests (one per method/status combination). **History** locates the original request row; **Replay** creates and opens a draft without sending it. JS recon shows an asset or original source-map module and a 1-based line and column for each deduplicated lead, with the same pivots when a captured request exists.
 
+Inside the API map, the toolbar searches route templates and concrete example
+paths instead of domains. Use `/` or `Ctrl/Cmd+K`, type a path, then choose
+from up to 25 suggestions with the arrow keys and `Enter` (or click one).
+The map centers the endpoint and opens its details. `Escape` in the search
+clears the query without leaving the map; searching sends no target requests.
+
 Use **Refresh API map** in the drill-down to reread that host's captured
 routes. **Sync domain graph** invalidates all cached API maps and refreshes
 the open map too. Both controls use local Caido data without sending target

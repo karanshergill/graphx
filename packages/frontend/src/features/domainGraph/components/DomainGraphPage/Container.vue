@@ -17,7 +17,7 @@ import {
 } from "shared";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
-import { RouteTreeCanvas, useApiMap } from "../../../routeTree";
+import { RouteSearch, RouteTreeCanvas, useApiMap } from "../../../routeTree";
 import { useDomainAssets } from "../../assets";
 import { useDomainGraph } from "../../composables";
 import {
@@ -206,9 +206,15 @@ const searchHostnames = computed(() =>
 );
 const searchBox = ref<{ focus: () => void }>();
 const graphCanvas = ref<{ focusNode: (hostname: string) => void }>();
+const routeSearchBox = ref<{ focus: () => void }>();
+const routeCanvas = ref<{ focusRoute: (template: string) => void }>();
 
 const onSearchJump = (hostname: string): void => {
   graphCanvas.value?.focusNode(hostname);
+};
+
+const onRouteSearchJump = (template: string): void => {
+  routeCanvas.value?.focusRoute(template);
 };
 
 const onGlobalKeydown = (event: KeyboardEvent): void => {
@@ -226,7 +232,8 @@ const onGlobalKeydown = (event: KeyboardEvent): void => {
     (event.ctrlKey || event.metaKey);
   if (isSlash || isSearchShortcut) {
     event.preventDefault();
-    searchBox.value?.focus();
+    if (drillHost.value === undefined) searchBox.value?.focus();
+    else routeSearchBox.value?.focus();
   }
 };
 
@@ -435,9 +442,18 @@ const copyReconEndpoints = (): void => {
 
       <div class="graphx-controls">
         <DomainSearch
+          v-if="drillHost === undefined"
           ref="searchBox"
           :hostnames="searchHostnames"
           @jump="onSearchJump"
+        />
+        <RouteSearch
+          v-else
+          :key="drillHost"
+          ref="routeSearchBox"
+          :routes="apiMap?.routes ?? []"
+          :disabled="apiMapState !== 'ready'"
+          @jump="onRouteSearchJump"
         />
         <label for="graphx-scope">Program scope</label>
         <Select
@@ -1015,6 +1031,7 @@ const copyReconEndpoints = (): void => {
             </div>
             <RouteTreeCanvas
               v-if="apiMapState === 'ready' && apiMap"
+              ref="routeCanvas"
               :api-map="apiMap"
               :host="drillHost"
               @select="selectedEndpoint = $event"

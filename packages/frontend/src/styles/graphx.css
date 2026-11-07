@@ -243,6 +243,22 @@
   background: var(--p-content-hover-background);
 }
 
+.graphx-route-search .graphx-search-results li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.graphx-route-search .graphx-search-results span,
+.graphx-route-search .graphx-search-results small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.graphx-route-search .graphx-search-results small {
+  color: var(--p-text-muted-color);
+}
+
 .graphx-controls label {
   white-space: nowrap;
 }

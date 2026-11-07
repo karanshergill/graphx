@@ -17,6 +17,7 @@ const emit = defineEmits<{
 const container = ref<HTMLElement>();
 let renderer: RouteTreeRenderer | undefined;
 let mountObserver: ResizeObserver | undefined;
+let pendingRoute: string | undefined;
 
 const mountRenderer = (): void => {
   if (renderer !== undefined || container.value === undefined) return;
@@ -29,6 +30,10 @@ const mountRenderer = (): void => {
     mountObserver?.disconnect();
     mountObserver = undefined;
     renderer.update(apiMap);
+    if (pendingRoute !== undefined) {
+      renderer.focusRoute(pendingRoute);
+      pendingRoute = undefined;
+    }
   } catch (error: unknown) {
     mountObserver?.disconnect();
     mountObserver = undefined;
@@ -58,6 +63,14 @@ watch(
   () => apiMap,
   () => renderer?.update(apiMap),
 );
+
+defineExpose({
+  focusRoute: (template: string): void => {
+    if (renderer === undefined) pendingRoute = template;
+    else renderer.focusRoute(template);
+    container.value?.focus();
+  },
+});
 
 onBeforeUnmount(() => {
   mountObserver?.disconnect();

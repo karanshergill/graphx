@@ -29,6 +29,7 @@ type NodeAttributes = {
 export type RouteTreeRenderer = {
   update: (apiMap: ApiMapResponse) => void;
   clearSelection: () => void;
+  focusRoute: (template: string) => void;
   resetView: () => void;
   destroy: () => void;
 };
@@ -184,6 +185,17 @@ export const createRouteTreeRenderer = (
     clearSelection: () => {
       selectedNode = undefined;
       onSelect(undefined);
+      renderer.scheduleRefresh();
+    },
+    focusRoute: (template) => {
+      const endpoint = endpoints.get(template);
+      if (endpoint === undefined) return;
+      selectedNode = template;
+      hoveredNode = undefined;
+      onSelect(endpoint);
+      const displayData = renderer.getNodeDisplayData(template);
+      if (displayData !== undefined)
+        renderer.getCamera().setState({ x: displayData.x, y: displayData.y });
       renderer.scheduleRefresh();
     },
     resetView: () => {
