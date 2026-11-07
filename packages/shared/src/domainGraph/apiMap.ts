@@ -2,6 +2,9 @@ export type ApiMapRequest = {
   path: string;
   query: string;
   method: string;
+  host?: string;
+  isTls?: boolean;
+  port?: number;
   requestId?: string;
   statusCode?: number;
   seenAt?: string;
@@ -11,6 +14,7 @@ export type ApiRouteEvidence = {
   requestId: string;
   method: string;
   path: string;
+  url?: string;
   statusCode?: number;
   seenAt?: string;
 };
@@ -291,6 +295,19 @@ export const buildApiMap = (
         method,
         path: request.path,
       };
+      const host = request.host?.trim().toLowerCase();
+      if (
+        host !== undefined &&
+        host !== "" &&
+        request.isTls !== undefined &&
+        request.port !== undefined
+      ) {
+        const scheme = request.isTls ? "https" : "http";
+        const port =
+          request.port === (request.isTls ? 443 : 80) ? "" : `:${request.port}`;
+        const query = request.query === "" ? "" : `?${request.query}`;
+        candidate.url = `${scheme}://${host}${port}${request.path}${query}`;
+      }
       if (request.statusCode !== undefined)
         candidate.statusCode = request.statusCode;
       if (request.seenAt !== undefined) candidate.seenAt = request.seenAt;

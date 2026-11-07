@@ -43,6 +43,16 @@ Install `dist/plugin_package.zip` from Caido's Plugins page, then select **Graph
 
 Route details show up to eight representative captured requests (one per method/status combination). **History** locates the original request row; **Replay** creates and opens a draft without sending it. JS recon shows an asset or original source-map module and a 1-based line and column for each deduplicated lead, with the same pivots when a captured request exists.
 
+Use **Refresh API map** in the drill-down to reread that host's captured
+routes. **Sync domain graph** invalidates all cached API maps and refreshes
+the open map too. Both controls use local Caido data without sending target
+traffic.
+
+In API route details, each captured sample's **Copy URL** preserves its
+scheme, non-default port, concrete path, and query string. **Copy route template**
+copies only the relative template (for example, `/api/users/{id}`). Samples
+without a known origin and sitemap-only routes never receive invented URLs.
+
 In the per-host JS asset panel, **Copy URLs** copies each distinct captured
 bundle URL with its scheme, non-default port, and query string; different
 captures of the same path remain separate URLs. No HTTPS origin is assumed.

@@ -12,15 +12,30 @@ export const useApiMap = () => {
   const state = ref<LoadState>("idle");
   let generation = 0;
 
+  const clear = (): void => {
+    generation += 1;
+    apiMap.value = undefined;
+    state.value = "idle";
+  };
+
+  const invalidate = (): void => {
+    cache.clear();
+    clear();
+  };
+
   // Maps are built from project-scoped traffic; never serve cached entries
   // from a previous project.
-  const stopProjectListener = sdk.backend.onEvent("project:changed", () => {
-    cache.clear();
-    generation += 1;
+  const stopProjectListener = sdk.backend.onEvent(
+    "project:changed",
+    invalidate,
+  );
+  onBeforeUnmount(() => {
+    invalidate();
+    stopProjectListener.stop();
   });
-  onBeforeUnmount(() => stopProjectListener.stop());
 
   const load = async (host: string, scopeId?: string): Promise<void> => {
+    const current = ++generation;
     const cacheKey = `${scopeId ?? ""}:${host}`;
     const cached = cache.get(cacheKey);
     if (cached !== undefined) {
@@ -28,7 +43,7 @@ export const useApiMap = () => {
       state.value = "ready";
       return;
     }
-    const current = ++generation;
+    apiMap.value = undefined;
     state.value = "loading";
     const result = await sdk.backend.getApiMap(host, scopeId);
     if (current !== generation) return;
@@ -42,16 +57,17 @@ export const useApiMap = () => {
     state.value = "ready";
   };
 
-  const clear = (): void => {
-    generation += 1;
-    apiMap.value = undefined;
-    state.value = "idle";
+  const refresh = (host: string, scopeId?: string): Promise<void> => {
+    cache.delete(`${scopeId ?? ""}:${host}`);
+    return load(host, scopeId);
   };
 
   return {
     apiMap: readonly(apiMap),
     clear,
+    invalidate,
     load,
+    refresh,
     state: readonly(state),
   };
 };

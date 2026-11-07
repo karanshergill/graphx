@@ -20,13 +20,22 @@ host — a visual, Swagger-like view built on the same sitemap-first data as
   the path accent, endpoints sized by log(requests) and colored by status mix
   (has 4xx = warning accent, has 5xx = danger, else observed). Legend included.
 - Selecting an endpoint opens a details panel: methods, statuses, query keys,
-  example path, in-sitemap flag, last seen, Copy URL, and captured request
-  samples. **History** navigates to and scrolls to the captured request row;
-  **Replay** creates and opens an unsent draft from its ID. Sitemap-only
-  endpoints have no request to open.
-- Data loads lazily per host through the typed plugin bridge
-  (`sdk.backend.getApiMap`) and is cached per host for the session. Loading,
-  error, and renderer-failure (e.g. no WebGL) states are all visible.
+  example path, in-sitemap flag, last seen, and captured request samples.
+  Each sample with a known origin has **Copy URL**, preserving its actual
+  HTTP(S) scheme, non-default port, concrete path, and query string.
+  **Copy route template** separately copies the relative template, such as
+  `/api/users/{id}`, without inventing an origin. **History** navigates to and
+  scrolls to the captured request row; **Replay** creates and opens an unsent
+  draft from its ID. Sitemap-only endpoints have only the template to copy.
+- Data loads lazily per host and scope through the typed plugin bridge
+  (`sdk.backend.getApiMap`). **Refresh API map** bypasses the current host's
+  cache and rebuilds from local captured data. **Sync domain graph** clears
+  every cached API map and also reloads the open drill-down, if any.
+  Project/scope changes invalidate cached maps; leaving the drill-down alone
+  keeps them for quick reopening. Refresh clears the previous route selection,
+  and results from superseded requests cannot restore an older map. Loading,
+  error, and renderer-failure (e.g. no WebGL) states are all visible. Neither
+  refresh control sends traffic to targets.
 - Domain-mode features (marks, paths, JS emphasis, search) stay in the domain
   view; the drill view has only its own minimal controls.
 
@@ -40,6 +49,8 @@ host — a visual, Swagger-like view built on the same sitemap-first data as
 | GX-DOM-904 | Drill in/out via Enter, panel button, breadcrumb, Escape; per-host cache. | `DomainGraphPage`, `useApiMap` | Harness assertions; live UI smoke test. |
 | GX-DOM-905 | Renderer failure never leaves a blank pane. | RouteTreeCanvas error emit + drill error state | Code review; error branch rendered in drill canvas. |
 | GX-DOM-906 | Pivot from representative captured route requests without sending target traffic. | `DomainGraphPage`, Caido History/Replay SDK | Backend sample-ID smoke; typed frontend build. |
+| GX-DOM-907 | Distinguish captured sample URL copies from relative route-template copies. | `DomainGraphPage`, route `evidence[].url` | Isolated Caido 0.59 clipboard returned `http://localhost:4179/api/users/42?view=full&next=%2Fsettings` for the GET sample, the POST sample's distinct URL, and `/api/users/{id}` for the template action. |
+| GX-DOM-908 | Refresh local captured routes on demand and invalidate API map caches on graph Sync. | `useApiMap`, `DomainGraphPage` | Five lifecycle regressions cover explicit refresh, cached-selection races, Sync invalidation, refresh failure, and project changes. Isolated Caido 0.59 showed 2→3 routes with Refresh API map, 3→4 with Sync while open, and 4→5 after Sync and reopening; captured request count remained 5. |
 
 ## Not part of this increment
 

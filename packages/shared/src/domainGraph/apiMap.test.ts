@@ -186,6 +186,59 @@ describe("buildApiMap", () => {
     expect(routes[0]?.statuses).toEqual({ "200": 1, "403": 1, "500": 1 });
   });
 
+  it("keeps each retained sample's captured URL separate from its route template", () => {
+    const routes = buildApiMap(
+      ["/api/users/42", "/api/sitemap-only"],
+      [
+        req("/api/users/7", {
+          requestId: "old",
+          host: "example.com",
+          isTls: false,
+          port: 8080,
+          query: "view=old",
+          statusCode: 200,
+          seenAt: "2026-08-01",
+        }),
+        req("/api/users/42", {
+          requestId: "current",
+          host: "example.com",
+          isTls: false,
+          port: 4179,
+          query: "view=full&next=%2Fsettings",
+          statusCode: 200,
+          seenAt: "2026-08-02",
+        }),
+        req("/api/users/43", {
+          requestId: "created",
+          host: "example.com",
+          isTls: true,
+          port: 443,
+          method: "POST",
+          statusCode: 201,
+        }),
+        req("/api/users/44", {
+          requestId: "unknown-origin",
+          method: "DELETE",
+          statusCode: 204,
+        }),
+      ],
+    );
+    const route = routes.find(({ template }) => template === "/api/users/{id}");
+    expect(
+      route?.evidence.map(({ requestId, url }) => ({ requestId, url })),
+    ).toEqual([
+      {
+        requestId: "current",
+        url: "http://example.com:4179/api/users/42?view=full&next=%2Fsettings",
+      },
+      { requestId: "unknown-origin", url: undefined },
+      { requestId: "created", url: "https://example.com/api/users/43" },
+    ]);
+    expect(
+      routes.find(({ template }) => template === "/api/sitemap-only")?.evidence,
+    ).toEqual([]);
+  });
+
   it("chooses the newest captured request per method/status with stable ties", () => {
     const requests = [
       req("/api/items/1", {

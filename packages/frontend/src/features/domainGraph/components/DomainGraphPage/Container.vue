@@ -243,7 +243,9 @@ const selectedEndpoint = ref<ApiRoute>();
 const {
   apiMap,
   clear: clearApiMap,
+  invalidate: invalidateApiMaps,
   load: loadApiMap,
+  refresh: reloadApiMap,
   state: apiMapState,
 } = useApiMap();
 
@@ -260,9 +262,24 @@ const drillOut = (): void => {
   clearApiMap();
 };
 
+const refreshSelectedApiMap = (): void => {
+  const hostname = drillHost.value;
+  if (hostname === undefined) return;
+  selectedEndpoint.value = undefined;
+  renderError.value = undefined;
+  void reloadApiMap(hostname, selectedScopeId.value);
+};
+
+const syncGraph = (): void => {
+  invalidateApiMaps();
+  refreshSelectedApiMap();
+  void refresh();
+};
+
 // A project or scope switch invalidates the cached maps; leave the drill-down
 // so the old context's routes are never shown as if they were current.
 watch([() => project.value?.id, selectedScopeId], () => {
+  invalidateApiMaps();
   jsReconGeneration += 1;
   jsReconLoading.value = false;
   activeSourceMapFetch.value = false;
@@ -281,10 +298,14 @@ const onDrilldown = (): void => {
 
 const copyRouteTemplate = (): void => {
   const endpoint = selectedEndpoint.value;
-  const host = drillHost.value;
-  if (endpoint === undefined || host === undefined) return;
-  void navigator.clipboard.writeText(`https://${host}${endpoint.template}`);
-  sdk.window.showToast("Route URL copied", { variant: "success" });
+  if (endpoint === undefined) return;
+  void navigator.clipboard.writeText(endpoint.template);
+  sdk.window.showToast("Route template copied", { variant: "success" });
+};
+
+const copyRouteUrl = (url: string): void => {
+  void navigator.clipboard.writeText(url);
+  sdk.window.showToast("Captured URL copied", { variant: "success" });
 };
 
 const openInHistory = async (requestId: string): Promise<void> => {
@@ -468,7 +489,7 @@ const copyReconEndpoints = (): void => {
                 ? `Sync — ${pendingChanges} sitemap change(s) pending`
                 : 'Sync domain graph'
             "
-            @click="refresh"
+            @click="syncGraph"
           />
           <span
             v-if="pendingChanges > 0"
@@ -973,6 +994,15 @@ const copyReconEndpoints = (): void => {
               >{{ apiMap.routeCount }} routes ·
               {{ apiMap.sitemapEndpoints }} sitemap endpoints</span
             >
+            <button
+              type="button"
+              class="graphx-map-refresh"
+              :disabled="apiMapState === 'loading'"
+              :aria-busy="apiMapState === 'loading'"
+              @click="refreshSelectedApiMap"
+            >
+              <i class="fas fa-sync-alt" aria-hidden="true" /> Refresh API map
+            </button>
           </div>
           <div class="graphx-drill-canvas">
             <div
@@ -1045,11 +1075,18 @@ const copyReconEndpoints = (): void => {
                   v-for="sample in selectedEndpoint.evidence"
                   :key="sample.requestId"
                 >
-                  <code :title="sample.path">
+                  <code :title="sample.url ?? sample.path">
                     {{ sample.method }} {{ sample.statusCode ?? "—" }}
-                    {{ sample.path }}
+                    {{ sample.url ?? sample.path }}
                   </code>
                   <div class="graphx-evidence-actions">
+                    <button
+                      v-if="sample.url !== undefined"
+                      type="button"
+                      @click="copyRouteUrl(sample.url)"
+                    >
+                      Copy URL
+                    </button>
                     <button
                       type="button"
                       @click="openInHistory(sample.requestId)"
@@ -1067,7 +1104,9 @@ const copyReconEndpoints = (): void => {
               </ul>
             </div>
             <small v-else>No captured request for this route.</small>
-            <button type="button" @click="copyRouteTemplate">Copy URL</button>
+            <button type="button" @click="copyRouteTemplate">
+              Copy route template
+            </button>
           </aside>
           <div class="graphx-legend" aria-label="Route map legend">
             <span><i class="graphx-dot graphx-dot-observed" />Endpoint</span>

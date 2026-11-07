@@ -323,6 +323,9 @@ type HostRequestsPage = {
     edges: {
       node: {
         id: string;
+        host: string;
+        isTls: boolean;
+        port: number;
         path: string;
         query: string;
         method: string;
@@ -370,7 +373,7 @@ const readHostRequests = async (
   for (;;) {
     const data = await execute<HostRequestsPage>(
       sdk,
-      "query($scopeId: ID, $filter: HTTPQLInput, $first: Int, $after: String, $order: RequestResponseOrderInput) { requests(scopeId: $scopeId, filter: $filter, first: $first, after: $after, order: $order) { edges { node { id path query method createdAt response { statusCode } } } pageInfo { endCursor hasNextPage } } }",
+      "query($scopeId: ID, $filter: HTTPQLInput, $first: Int, $after: String, $order: RequestResponseOrderInput) { requests(scopeId: $scopeId, filter: $filter, first: $first, after: $after, order: $order) { edges { node { id host isTls port path query method createdAt response { statusCode } } } pageInfo { endCursor hasNextPage } } }",
       {
         scopeId,
         filter: {
@@ -391,6 +394,9 @@ const readHostRequests = async (
         query: edge.node.query,
         method: edge.node.method,
         requestId: edge.node.id,
+        host: edge.node.host,
+        isTls: edge.node.isTls,
+        port: edge.node.port,
       };
       const statusCode = edge.node.response?.statusCode;
       if (statusCode !== undefined && statusCode !== null)

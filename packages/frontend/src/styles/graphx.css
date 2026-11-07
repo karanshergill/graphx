@@ -444,10 +444,19 @@
   padding: 0.3rem 0.65rem;
 }
 
-.graphx-breadcrumb button:hover,
+.graphx-breadcrumb button:enabled:hover,
 .graphx-breadcrumb button:focus-visible {
   background: var(--p-content-hover-background);
   outline: none;
+}
+
+.graphx-breadcrumb button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.graphx-map-refresh {
+  margin-left: auto;
 }
 
 .graphx-breadcrumb strong {

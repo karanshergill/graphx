@@ -33,8 +33,11 @@ sitemap endpoint is kept but flagged `inSitemap: false`.
   queryKeys[], firstSeen, lastSeen, evidence[]`. `evidence[]` contains up to
   eight captured request samples (one newest request per method/status, stable
   ties), each with `requestId`, method, path, optional status and timestamp.
-  Sitemap-only routes have no evidence; counts still include all swept requests.
-  Selection is deterministic and input-order independent.
+  A sample's optional `url` preserves its captured HTTP(S) scheme, non-default
+  port, concrete path, and query string. Missing origin metadata leaves `url`
+  absent rather than inventing an HTTPS origin. Sitemap-only routes have no
+  evidence; counts still include all swept requests. Selection is deterministic
+  and input-order independent.
 - Response: `project, scope, host, generatedAt, truncated, sitemapEndpoints,
   requestsScanned, routeCount, routes[]`.
 
@@ -56,6 +59,7 @@ path shape — read `statuses`/`examplePath` before trusting such a template.
 | GX-DOM-802 | Sitemap-first structure: endpoints from the sitemap tree, stats joined from requests; orphans flagged. | `agentapi/query.ts` `readSitemapHostPaths`, `buildApiMap(sitemapPaths, requests)` | Live curl: 922 endpoints, 0 orphans. Tests for sitemap-only endpoints and `inSitemap:false`. |
 | GX-DOM-803 | Route served read-only on the agent API with 400s for bad input. | `agentapi/routes.ts` `/api-map` | Live curl outputs above; 400 on missing/invalid/absent host. |
 | GX-DOM-804 | Keep bounded, reproducible captured request IDs behind each route for native Caido pivots. | `apiMap.ts`, `agentapi/query.ts` | Model tests for mixed 200/403, sitemap-only and sample cap; backend query smoke with a captured ID. |
+| GX-DOM-805 | Retain real captured URLs for representative route samples without replacing concrete paths with templates. | `apiMap.ts`, `agentapi/query.ts` | `apiMap.test.ts` covers retained-sample URL identity, encoded query values, default HTTPS port, and missing origins; isolated Caido `/api-map` returned captured HTTP URLs on port 4179. |
 
 ## Not part of this increment
 
