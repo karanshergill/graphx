@@ -13,7 +13,14 @@ const MAX_SWEEP_REQUESTS = 100_000;
 const RAW_FETCH_CONCURRENCY = 16;
 
 type AssetEdge = {
-  node: { host: string; path: string; createdAt: unknown };
+  node: {
+    host: string;
+    path: string;
+    query: string;
+    isTls: boolean;
+    port: number;
+    createdAt: unknown;
+  };
 };
 
 const readAssetEdge = async (
@@ -40,6 +47,9 @@ const readAssetEdge = async (
   const request: ObservedAssetRequest = {
     host: node.host,
     path: node.path,
+    query: node.query,
+    isTls: node.isTls,
+    port: node.port,
   };
   if (!suffixAsset) request.isJavaScript = true;
   const statusCode = response?.statusCode;

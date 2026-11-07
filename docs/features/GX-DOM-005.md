@@ -61,8 +61,10 @@ host without leaving Caido.
   prominent (with count suffixes), everything else fades, and the Marked-only
   hard filter is not applied.
 - Selecting a host lists up to 50 bundles (path, request count, last status,
-  `map` badge) in the selection panel, with a **Copy URLs** button that writes
-  `https://<host><path>` lines to the clipboard.
+  `map` badge) in the selection panel. **Copy URLs** writes every distinct
+  captured bundle URL for that host, including bundles past the display limit,
+  with its HTTP(S) scheme, non-default port, and query string intact. It never
+  invents an HTTPS URL when the captured origin is unavailable.
 - Structural parents simply have no assets and render as before.
 
 ## Requirements ledger
@@ -76,6 +78,7 @@ host without leaving Caido.
 | GX-DOM-505 | Per-host bundle list with map badge, status, copy URLs. | `DomainGraphPage` selection panel | Harness DOM assertions; installed UI inspection. |
 | GX-DOM-506 | Lifecycle: reload on scope change and manual graph sync; release on exit. | `useDomainAssets` | Deferred snapshot/sweep tests cover scope switches, manual sync, and page re-entry; installed UI navigation smoke. |
 | GX-DOM-507 | Show captured JavaScript at extensionless paths without target refetches. | `JS_ASSETS_HTTPQL`, `caidoRequests.ts`, `agentapi/query.ts` | Decoded-raw frontend regression; Caido 0.59 asset API and UI displayed `/assets/entry` paired with `/assets/entry.map`, excluding text/plain `/assets/decoy`. |
+| GX-DOM-508 | Copy actual captured JS asset URLs without losing HTTP scheme, non-default ports, or query variants. | `shared/src/domainGraph/assets.ts`, `caidoRequests.ts`, `agentapi/query.ts`, `DomainGraphPage` | `assets.test.ts` covers distinct origins and queries; installed Caido 0.59 `/assets?scope=1` and UI clipboard both returned `http://localhost:4177/assets/entry?build=2` and `http://localhost:4178/assets/entry?build=3` from one bundle row. |
 
 ## Not part of this increment
 

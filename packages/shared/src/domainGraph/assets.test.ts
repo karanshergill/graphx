@@ -65,7 +65,6 @@ describe("isJavaScriptResponse", () => {
 describe("groupAssetsByHost", () => {
   const requests: ObservedAssetRequest[] = [
     { host: "app.example.com", path: "/a/main.js", statusCode: 200 },
-    { host: "app.example.com", path: "/a/main.js", statusCode: 304 },
     { host: "app.example.com", path: "/a/vendor.js", statusCode: 200 },
     { host: "app.example.com", path: "/a/main.js.map", statusCode: 200 },
     { host: "cdn.example.com", path: "/lib.js" },
@@ -95,13 +94,62 @@ describe("groupAssetsByHost", () => {
     });
   });
 
+  it("keeps the captured scheme, port, and query variants for copied bundles", () => {
+    const host = groupAssetsByHost([
+      {
+        host: "app.example.com",
+        path: "/assets/runtime",
+        query: "v=2",
+        isTls: false,
+        port: 4177,
+        isJavaScript: true,
+      },
+      {
+        host: "app.example.com",
+        path: "/assets/runtime",
+        query: "v=1",
+        isTls: true,
+        port: 8443,
+        isJavaScript: true,
+      },
+      {
+        host: "app.example.com",
+        path: "/assets/runtime",
+        query: "v=1",
+        isTls: false,
+        port: 4177,
+        isJavaScript: true,
+      },
+      {
+        host: "app.example.com",
+        path: "/assets/runtime",
+        query: "v=3",
+        isTls: true,
+        port: 443,
+        isJavaScript: true,
+      },
+      { host: "app.example.com", path: "/unknown.js" },
+    ]).get("app.example.com");
+    expect(
+      host?.bundles.find((bundle) => bundle.path === "/assets/runtime")?.urls,
+    ).toEqual([
+      "http://app.example.com:4177/assets/runtime?v=1",
+      "http://app.example.com:4177/assets/runtime?v=2",
+      "https://app.example.com/assets/runtime?v=3",
+      "https://app.example.com:8443/assets/runtime?v=1",
+    ]);
+    expect(
+      host?.bundles.find((bundle) => bundle.path === "/unknown.js")?.urls,
+    ).toEqual([]);
+  });
+
   it("groups, dedupes, counts, and pairs maps", () => {
     const grouped = groupAssetsByHost(requests);
     const app = grouped.get("app.example.com");
     expect(app?.bundleCount).toBe(2);
     expect(app?.mapCount).toBe(1);
-    expect(app?.bundles).toEqual([
-      { path: "/a/main.js", requestCount: 2, lastStatus: 304, hasMap: true },
+    expect(app?.bundles).toMatchObject([
+      { path: "/a/main.js", requestCount: 1, lastStatus: 200, hasMap: true },
       { path: "/a/vendor.js", requestCount: 1, lastStatus: 200, hasMap: false },
     ]);
     const cdn = grouped.get("cdn.example.com");

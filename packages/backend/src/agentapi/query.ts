@@ -148,6 +148,9 @@ type AssetEdge = {
     id: string;
     host: string;
     path: string;
+    query: string;
+    isTls: boolean;
+    port: number;
     createdAt: unknown;
     response?: { statusCode: number };
   };
@@ -164,6 +167,9 @@ const readAssetEdge = async (
   const request: ObservedAssetRequest = {
     host: node.host,
     path: node.path,
+    query: node.query,
+    isTls: node.isTls,
+    port: node.port,
   };
   if (!suffixAsset) request.isJavaScript = true;
   const statusCode = node.response?.statusCode;
@@ -192,7 +198,7 @@ export const readJsAssetRequests = async (
   for (;;) {
     const data = await execute<RequestsPage>(
       sdk,
-      "query($scopeId: ID, $filter: HTTPQLInput, $first: Int, $after: String, $order: RequestResponseOrderInput) { requests(scopeId: $scopeId, filter: $filter, first: $first, after: $after, order: $order) { edges { cursor node { id host path createdAt response { statusCode } } } pageInfo { endCursor hasNextPage } } }",
+      "query($scopeId: ID, $filter: HTTPQLInput, $first: Int, $after: String, $order: RequestResponseOrderInput) { requests(scopeId: $scopeId, filter: $filter, first: $first, after: $after, order: $order) { edges { cursor node { id host path query isTls port createdAt response { statusCode } } } pageInfo { endCursor hasNextPage } } }",
       {
         scopeId,
         filter: { code: JS_ASSETS_HTTPQL },

@@ -43,6 +43,10 @@ Install `dist/plugin_package.zip` from Caido's Plugins page, then select **Graph
 
 Route details show up to eight representative captured requests (one per method/status combination). **History** locates the original request row; **Replay** creates and opens a draft without sending it. JS recon shows an asset or original source-map module and a 1-based line and column for each deduplicated lead, with the same pivots when a captured request exists.
 
+In the per-host JS asset panel, **Copy URLs** copies each distinct captured
+bundle URL with its scheme, non-default port, and query string; different
+captures of the same path remain separate URLs. No HTTPS origin is assumed.
+
 **Copy endpoints** preserves each captured asset's scheme and port; the same
 relative path can yield multiple distinct URLs. Leads with no known origin
 remain relative rather than being rewritten to HTTPS.

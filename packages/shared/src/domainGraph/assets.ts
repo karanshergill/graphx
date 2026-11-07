@@ -1,6 +1,9 @@
 export type ObservedAssetRequest = {
   host: string;
   path: string;
+  query?: string;
+  isTls?: boolean;
+  port?: number;
   isJavaScript?: boolean;
   statusCode?: number;
   seenAt?: string;
@@ -8,6 +11,7 @@ export type ObservedAssetRequest = {
 
 type BundleAsset = {
   path: string;
+  urls: readonly string[];
   requestCount: number;
   lastStatus?: number;
   hasMap: boolean;
@@ -92,6 +96,7 @@ export const groupAssetsByHost = (
     Map<
       string,
       {
+        urls: Set<string>;
         requestCount: number;
         lastStatus?: number;
         firstSeen?: string;
@@ -124,11 +129,23 @@ export const groupAssetsByHost = (
 
     const bundles = bundlesByHost.get(host) ?? new Map();
     const existing = bundles.get(path);
+    const urls = existing?.urls ?? new Set<string>();
+    if (request.isTls !== undefined && request.port !== undefined) {
+      const scheme = request.isTls ? "https" : "http";
+      const port =
+        request.port === (request.isTls ? 443 : 80) ? "" : `:${request.port}`;
+      const query =
+        request.query === undefined || request.query === ""
+          ? ""
+          : `?${request.query}`;
+      urls.add(`${scheme}://${host}${port}${request.path}${query}`);
+    }
     const entry = {
       requestCount: (existing?.requestCount ?? 0) + 1,
       lastStatus: request.statusCode ?? existing?.lastStatus,
       firstSeen: existing?.firstSeen,
       lastSeen: existing?.lastSeen,
+      urls,
     };
     if (request.seenAt !== undefined) {
       if (entry.firstSeen === undefined || request.seenAt < entry.firstSeen)
@@ -149,6 +166,7 @@ export const groupAssetsByHost = (
         const asset: BundleAsset = {
           path,
           requestCount: entry.requestCount,
+          urls: [...entry.urls].sort(),
           hasMap: mapPaths.has(`${path}.map`),
         };
         if (entry.lastStatus !== undefined) asset.lastStatus = entry.lastStatus;

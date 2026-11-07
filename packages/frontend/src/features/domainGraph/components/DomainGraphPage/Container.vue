@@ -135,15 +135,12 @@ const selectedHostAssets = computed(() => {
 
 const copyAssetUrls = (): void => {
   const assets = selectedHostAssets.value;
-  const hostname = selectedHostname.value;
-  if (assets === undefined || hostname === undefined) return;
-  void navigator.clipboard.writeText(
-    assets.bundles
-      .map((bundle) => `https://${hostname}${bundle.path}`)
-      .join("\n"),
-  );
+  if (assets === undefined) return;
+  const urls = assets.bundles.flatMap((bundle) => bundle.urls);
+  if (urls.length === 0) return;
+  void navigator.clipboard.writeText(urls.join("\n"));
   sdk.window.showToast(
-    `Copied ${assets.bundleCount} bundle URL${assets.bundleCount === 1 ? "" : "s"}`,
+    `Copied ${urls.length} bundle URL${urls.length === 1 ? "" : "s"}`,
     { variant: "success" },
   );
 };
