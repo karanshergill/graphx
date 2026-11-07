@@ -1,11 +1,15 @@
+import { Buffer } from "buffer";
+
 import {
   type ApiMapRequest,
   type ApiMapResponse,
   buildApiMap,
   buildDomainGraph,
+  classifyAssetPath,
   type DomainGraphSnapshot,
   groupAssetsByHost,
   type HostAssets,
+  isJavaScriptResponse,
   JS_ASSETS_HTTPQL,
   normalizeHostname,
   normalizeSeenAt,
@@ -99,23 +103,80 @@ export const buildScopeDomainGraph = (
 
 const PAGE_SIZE = 500;
 const MAX_SWEEP_REQUESTS = 100_000;
+const RAW_FETCH_CONCURRENCY = 16;
+const BASE64_HEADER_CHUNK = 8192; // A multiple of four, so each slice decodes independently.
+
+const hasJavaScriptHeaders = (raw: string): boolean => {
+  let headers = "";
+  for (let offset = 0; offset < raw.length; offset += BASE64_HEADER_CHUNK) {
+    headers += Buffer.from(
+      raw.slice(offset, offset + BASE64_HEADER_CHUNK),
+      "base64",
+    ).toString("latin1");
+    if (headers.includes("\r\n\r\n")) return isJavaScriptResponse(headers);
+  }
+  return false;
+};
+
+type RawResponse = { request?: { response?: { raw?: string } } };
+
+const hasCapturedJavaScriptResponse = async (
+  sdk: BackendSDK,
+  id: string,
+): Promise<boolean> => {
+  try {
+    const data = await execute<RawResponse>(
+      sdk,
+      "query($id: ID!) { request(id: $id) { response { raw } } }",
+      { id },
+    );
+    const raw = data.request?.response?.raw;
+    return typeof raw === "string" && hasJavaScriptHeaders(raw);
+  } catch {
+    // An unreadable captured response must not interrupt the sweep.
+    return false;
+  }
+};
 
 type JsAssetSweep = {
   requests: ObservedAssetRequest[];
   truncated: boolean;
 };
 
+type AssetEdge = {
+  node: {
+    id: string;
+    host: string;
+    path: string;
+    createdAt: unknown;
+    response?: { statusCode: number };
+  };
+};
+
+const readAssetEdge = async (
+  sdk: BackendSDK,
+  edge: AssetEdge,
+): Promise<ObservedAssetRequest | undefined> => {
+  const { node } = edge;
+  const suffixAsset = classifyAssetPath(node.path) !== undefined;
+  if (!suffixAsset && !(await hasCapturedJavaScriptResponse(sdk, node.id)))
+    return undefined;
+  const request: ObservedAssetRequest = {
+    host: node.host,
+    path: node.path,
+  };
+  if (!suffixAsset) request.isJavaScript = true;
+  const statusCode = node.response?.statusCode;
+  if (statusCode !== undefined && statusCode !== null)
+    request.statusCode = statusCode;
+  const seenAt = normalizeSeenAt(node.createdAt);
+  if (seenAt !== undefined) request.seenAt = seenAt;
+  return request;
+};
+
 type RequestsPage = {
   requests: {
-    edges: {
-      cursor: string;
-      node: {
-        host: string;
-        path: string;
-        createdAt: unknown;
-        response?: { statusCode: number };
-      };
-    }[];
+    edges: (AssetEdge & { cursor: string })[];
     pageInfo: { endCursor?: string; hasNextPage: boolean };
   };
 };
@@ -125,12 +186,13 @@ export const readJsAssetRequests = async (
   scopeId: string,
 ): Promise<JsAssetSweep> => {
   const requests: ObservedAssetRequest[] = [];
+  let scannedRequests = 0;
   let after: string | undefined;
 
   for (;;) {
     const data = await execute<RequestsPage>(
       sdk,
-      "query($scopeId: ID, $filter: HTTPQLInput, $first: Int, $after: String, $order: RequestResponseOrderInput) { requests(scopeId: $scopeId, filter: $filter, first: $first, after: $after, order: $order) { edges { cursor node { host path createdAt response { statusCode } } } pageInfo { endCursor hasNextPage } } }",
+      "query($scopeId: ID, $filter: HTTPQLInput, $first: Int, $after: String, $order: RequestResponseOrderInput) { requests(scopeId: $scopeId, filter: $filter, first: $first, after: $after, order: $order) { edges { cursor node { id host path createdAt response { statusCode } } } pageInfo { endCursor hasNextPage } } }",
       {
         scopeId,
         filter: { code: JS_ASSETS_HTTPQL },
@@ -139,23 +201,23 @@ export const readJsAssetRequests = async (
         ...(after === undefined ? {} : { after }),
       },
     );
-    for (const edge of data.requests.edges) {
-      const request: ObservedAssetRequest = {
-        host: edge.node.host,
-        path: edge.node.path,
-      };
-      const statusCode = edge.node.response?.statusCode;
-      if (statusCode !== undefined && statusCode !== null)
-        request.statusCode = statusCode;
-      const seenAt = normalizeSeenAt(edge.node.createdAt);
-      if (seenAt !== undefined) request.seenAt = seenAt;
-      requests.push(request);
+    const edges = data.requests.edges;
+    scannedRequests += edges.length;
+    for (let start = 0; start < edges.length; start += RAW_FETCH_CONCURRENCY) {
+      const batch = await Promise.all(
+        edges
+          .slice(start, start + RAW_FETCH_CONCURRENCY)
+          .map((edge) => readAssetEdge(sdk, edge)),
+      );
+      for (const request of batch) {
+        if (request !== undefined) requests.push(request);
+      }
     }
     const { endCursor, hasNextPage } = data.requests.pageInfo;
     if (!hasNextPage || endCursor === undefined) {
       return { requests, truncated: false };
     }
-    if (requests.length >= MAX_SWEEP_REQUESTS) {
+    if (scannedRequests >= MAX_SWEEP_REQUESTS) {
       sdk.console.warn(
         "GraphX sweep stopped: request budget exhausted; results are truncated.",
       );

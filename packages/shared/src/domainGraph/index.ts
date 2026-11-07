@@ -2,6 +2,8 @@ export {
   classifyAssetPath,
   groupAssetsByHost,
   JS_ASSETS_HTTPQL,
+  isJavaScriptResponse,
+  JS_MIME_HTTPQL,
   normalizeSeenAt,
   type HostAssets,
   type ObservedAssetRequest,

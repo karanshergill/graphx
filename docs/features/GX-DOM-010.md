@@ -36,12 +36,15 @@ observed bundles are fetched only after a one-scan opt-in in the GraphX UI.
   relative. Creating the list sends no target requests.
 - The backend sweep (`services/jsRecon.ts`) pages the GraphQL `requests`
   connection (scope-pinned, case-insensitive host match including explicit
-  ports, `%.js`/`%.mjs`, status < 400, newest first), dedupes by full
-  URL including scheme, port, path, and query (cache-busted variants and
-  HTTP/HTTPS responses remain distinct), and reads headers and bodies via
-  `request(id) → response.raw` (base64 raw HTTP; body starts after the first
-  CRLFCRLF) in batches of 16 parallel requests. It
-  merges per-bundle extractions with `mergeJsRecon`. Note: the plugin SDK's
+  ports, `.js`/`.mjs` paths or captured `text/javascript`/
+  `application/javascript` MIME candidates, status < 400, newest first),
+  dedupes by full URL including scheme, port, path, and query (cache-busted
+  variants and HTTP/HTTPS responses remain distinct), and reads headers
+  and bodies via `request(id) → response.raw` (base64 raw HTTP; body starts
+  after the first CRLFCRLF) in batches of 16. MIME-only candidates must
+  have a JavaScript `Content-Type` in the actual response headers; MIME text
+  in the body alone does not qualify. `.map` paths remain in the map sweep.
+  It merges per-bundle extractions with `mergeJsRecon`. The plugin SDK's
   `sdk.requests.query()` helper returned zero items for filters that match
   via GraphQL — the sweep deliberately uses `sdk.graphql.execute` instead
   (same pattern as `agentapi/query.ts`).
@@ -133,3 +136,4 @@ observed bundles are fetched only after a one-scan opt-in in the GraphX UI.
 | R7 | Per-run consent, rate control, optional cap, and persistent audit | `DomainGraphPage/Container.vue`, `services/jsRecon.ts`, `repositories/jsRecon.ts` | Exhaustive/optional-cap, rate and fail-closed tests plus UI smoke |
 | R8 | Preserve observed origins when copying endpoint leads. | `services/jsRecon.ts`, `DomainGraphPage/Container.vue` | Backend tests cover HTTP, HTTPS, non-default ports, and captured map sources; installed Caido API and UI-generated copy text retained `http://localhost:4175/`. |
 | R9 | Discover maps from captured HTTP `SourceMap` headers before bundle footers | `services/jsRecon.ts` | Header-only and conflicting-footer regression tests; installed Caido passive scan displayed both captured maps and their original-source endpoints without active fetch. |
+| R10 | Scan captured extensionless JavaScript by actual response MIME, keeping suffix fallback and map priority | `services/jsRecon.ts`, `shared/src/domainGraph/assets.ts` | Header and body-decoy regressions; Caido 0.59 passive API/UI found `/api/extensionless` from `/assets/entry?build=2` and `/api/from-extensionless` from its captured map, with zero missing references and no active fetch. |

@@ -2,10 +2,13 @@ import { Buffer } from "buffer";
 
 import { RequestSpec } from "caido:utils";
 import {
+  classifyAssetPath,
   err,
   extractJsRecon,
   extractSourceMapRecon,
   findSourceMapRef,
+  isJavaScriptResponse,
+  JS_MIME_HTTPQL,
   type JsReconActiveOptions,
   type JsReconActiveSummary,
   type JsReconExtraction,
@@ -78,7 +81,7 @@ const buildFilter = (
   `(req.host.like:"${host}" or req.host.like:"${host}:%") ` +
   `and ${pathClause} and ${statusClause}`;
 
-const JS_PATH_CLAUSE = '(req.path.like:"%.js" or req.path.like:"%.mjs")';
+const JS_PATH_CLAUSE = `(req.path.like:"%.js" or req.path.like:"%.mjs" or ${JS_MIME_HTTPQL})`;
 const MAP_PATH_CLAUSE = '(req.path.like:"%.map")';
 const STATUS_OK = "resp.code.lt:400";
 const STATUS_BLOCKED = "resp.code.gte:400";
@@ -170,6 +173,7 @@ const sweepCandidates = async (
 const fetchResponseText = async (
   sdk: BackendSDK,
   id: string,
+  requireJavaScriptHeader = false,
 ): Promise<string | undefined> => {
   let data: JsRequestBody;
   try {
@@ -187,6 +191,22 @@ const fetchResponseText = async (
   }
   const raw = data.request?.response?.raw;
   if (typeof raw !== "string") return undefined;
+  if (requireJavaScriptHeader) {
+    // HTTPQL also matches response bodies. Decode only through the headers
+    // before accepting a MIME-only candidate (which may have a large body).
+    let length = Math.min(raw.length, 4096);
+    for (;;) {
+      const prefix = Buffer.from(raw.slice(0, length), "base64").toString(
+        "utf-8",
+      );
+      if (prefix.includes("\r\n\r\n")) {
+        if (!isJavaScriptResponse(prefix)) return undefined;
+        break;
+      }
+      if (length === raw.length) return undefined;
+      length = Math.min(raw.length, length * 2);
+    }
+  }
   // `raw` includes the status line, response headers, and body.
   return Buffer.from(raw, "base64").toString("utf-8");
 };
@@ -294,7 +314,15 @@ const buildHostJsRecon = async (
       normalized,
       buildFilter(normalized, JS_PATH_CLAUSE, STATUS_OK),
       async (candidate) => {
-        const response = await fetchResponseText(sdk, candidate.id);
+        const kind = classifyAssetPath(candidate.node.path);
+        // A .map may match the MIME search via its body, but belongs only
+        // in the separate captured-map sweep.
+        if (kind === "map") return;
+        const response = await fetchResponseText(
+          sdk,
+          candidate.id,
+          kind !== "bundle",
+        );
         if (response === undefined) return;
         const headerEnd = response.indexOf("\r\n\r\n");
         if (headerEnd === -1) return;

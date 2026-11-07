@@ -47,6 +47,12 @@ Route details show up to eight representative captured requests (one per method/
 relative path can yield multiple distinct URLs. Leads with no known origin
 remain relative rather than being rewritten to HTTPS.
 
+Captured script discovery also recognizes `text/javascript` and
+`application/javascript` response headers on paths without `.js`/`.mjs`,
+including extensionless URLs. MIME text in a response body does not make it
+a script; `.map` remains a map. Both the asset list and passive recon use
+Caido's captured responses, without extra target requests.
+
 JS recon reads captured traffic by default. It follows captured HTTP
 `SourceMap` headers (case-insensitive), including bundles without a footer;
 those headers take precedence over a `//# sourceMappingURL=` footer. Captured

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifyAssetPath,
   groupAssetsByHost,
+  isJavaScriptResponse,
   normalizeSeenAt,
   type ObservedAssetRequest,
 } from "./assets";
@@ -25,6 +26,40 @@ describe("classifyAssetPath", () => {
     expect(classifyAssetPath("/APP/MAIN.JS?v=3")).toBe("bundle");
     expect(classifyAssetPath("/APP/MAIN.JS.MAP")).toBe("map");
   });
+
+  it("classifies a MIME-confirmed extensionless script but never a map as a bundle", () => {
+    expect(classifyAssetPath("/assets/entry?build=2", true)).toBe("bundle");
+    expect(classifyAssetPath("/assets/entry.map", true)).toBe("map");
+    expect(classifyAssetPath("/assets/decoy", false)).toBeUndefined();
+  });
+});
+
+describe("isJavaScriptResponse", () => {
+  it("accepts JavaScript MIME in case-insensitive response headers with parameters", () => {
+    expect(
+      isJavaScriptResponse(
+        "HTTP/1.1 200 OK\r\nCoNtEnT-TyPe: TEXT/JAVASCRIPT; charset=utf-8\r\n\r\nfetch('/api/a')",
+      ),
+    ).toBe(true);
+    expect(
+      isJavaScriptResponse(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/javascript\r\n\r\n",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects MIME tokens in bodies and near-miss header values", () => {
+    expect(
+      isJavaScriptResponse(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n// Content-Type: text/javascript",
+      ),
+    ).toBe(false);
+    expect(
+      isJavaScriptResponse(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/javascript-extra\r\n\r\n",
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("groupAssetsByHost", () => {
@@ -36,6 +71,29 @@ describe("groupAssetsByHost", () => {
     { host: "cdn.example.com", path: "/lib.js" },
     { host: "cdn.example.com", path: "/data.json", statusCode: 200 },
   ];
+
+  it("lists MIME-confirmed scripts and pairs captured maps without adding decoys", () => {
+    const grouped = groupAssetsByHost([
+      {
+        host: "app.example.com",
+        path: "/assets/entry?build=2",
+        statusCode: 200,
+        isJavaScript: true,
+      },
+      { host: "app.example.com", path: "/assets/entry.map", statusCode: 200 },
+      {
+        host: "app.example.com",
+        path: "/assets/decoy",
+        statusCode: 200,
+        isJavaScript: false,
+      },
+    ]);
+    expect(grouped.get("app.example.com")).toMatchObject({
+      bundleCount: 1,
+      mapCount: 1,
+      bundles: [{ path: "/assets/entry", requestCount: 1, hasMap: true }],
+    });
+  });
 
   it("groups, dedupes, counts, and pairs maps", () => {
     const grouped = groupAssetsByHost(requests);

@@ -580,6 +580,94 @@ describe("JS recon backend safety", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it("scans MIME-confirmed extensionless bundles and ignores body-only MIME decoys", async () => {
+    const { sdk, send, requestedPages } = fixture(2, {
+      bundleLocation: (index) => ({
+        path: index === 0 ? "/assets/entry" : "/assets/decoy",
+      }),
+      responseOverrides: {
+        r0: {
+          statusCode: 200,
+          headers: [
+            "Content-Type: text/javascript; charset=utf-8",
+            "SourceMap: /assets/entry.map",
+          ],
+          body: 'fetch("/api/extensionless");',
+        },
+        r1: {
+          statusCode: 200,
+          headers: ["Content-Type: text/plain"],
+          body: '// Content-Type: text/javascript\nfetch("/api/decoy");',
+        },
+      },
+      observedMaps: [
+        {
+          path: "/assets/entry.map",
+          body: JSON.stringify({
+            version: 3,
+            sources: ["entry.ts"],
+            sourcesContent: ['fetch("/api/from-extensionless")'],
+            mappings: "",
+          }),
+        },
+      ],
+    });
+    const { repo } = memoryRepository();
+    const result = await createJsReconService(sdk, repo).scan(
+      "example.com",
+      "scope-a",
+    );
+    expect(result.kind).toBe("Ok");
+    if (result.kind !== "Ok") return;
+    expect(requestedPages[0]?.filter).toContain(
+      'resp.raw.cont:"text/javascript"',
+    );
+    expect(result.value.bundlesScanned).toBe(1);
+    expect(result.value.endpoints).toEqual([
+      "/api/extensionless",
+      "/api/from-extensionless",
+    ]);
+    expect(result.value.sourceMaps).toEqual(["/assets/entry.map"]);
+    expect(result.value.missingMapReferences).toBe(0);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("keeps .map paths out of the MIME bundle sweep and accepts application/javascript", async () => {
+    const { sdk, send, requestedPages } = fixture(3, {
+      bundleLocation: (index) => ({
+        path: ["/assets/entry.map", "/assets/legacy.js", "/assets/modern"][
+          index
+        ]!,
+      }),
+      responseOverrides: {
+        r0: {
+          statusCode: 200,
+          headers: ["Content-Type: application/javascript"],
+          body: 'fetch("/api/not-a-bundle");',
+        },
+        r1: { statusCode: 200, body: 'fetch("/api/legacy");' },
+        r2: {
+          statusCode: 200,
+          headers: ["Content-Type: application/javascript; charset=utf-8"],
+          body: 'fetch("/api/modern");',
+        },
+      },
+    });
+    const { repo } = memoryRepository();
+    const result = await createJsReconService(sdk, repo).scan(
+      "example.com",
+      "scope-a",
+    );
+    expect(result.kind).toBe("Ok");
+    if (result.kind !== "Ok") return;
+    expect(requestedPages[0]?.filter).toContain(
+      'resp.raw.cont:"application/javascript"',
+    );
+    expect(result.value.bundlesScanned).toBe(2);
+    expect(result.value.endpoints).toEqual(["/api/legacy", "/api/modern"]);
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("discovers header-only maps passively and fetches them only after consent", async () => {
     const { sdk, send } = fixture(1, {
       responseOverrides: {

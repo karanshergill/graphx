@@ -1,6 +1,7 @@
 export type ObservedAssetRequest = {
   host: string;
   path: string;
+  isJavaScript?: boolean;
   statusCode?: number;
   seenAt?: string;
 };
@@ -40,14 +41,47 @@ export const normalizeSeenAt = (value: unknown): string | undefined => {
   return undefined;
 };
 
-export const JS_ASSETS_HTTPQL =
-  '(req.path.like:"%.js" or req.path.like:"%.mjs" or req.path.like:"%.map") and resp.code.lt:400 and resp.raw.ncont:"ontent-Type: text/html"';
+// HTTPQL searches the full captured response, including the body. Confirm
+// the MIME value in actual response headers before accepting a non-JS path.
+export const JS_MIME_HTTPQL =
+  '(resp.raw.cont:"text/javascript" or resp.raw.cont:"application/javascript")';
 
-export const classifyAssetPath = (path: string): AssetKind | undefined => {
+export const JS_ASSETS_HTTPQL = `(req.path.like:"%.js" or req.path.like:"%.mjs" or req.path.like:"%.map" or ${JS_MIME_HTTPQL}) and resp.code.lt:400 and resp.raw.ncont:"ontent-Type: text/html"`;
+
+export const isJavaScriptResponse = (response: string): boolean => {
+  const headerEnd = response.indexOf("\r\n\r\n");
+  if (headerEnd === -1) return false;
+  const name = "content-type";
+  let start = response.indexOf("\r\n") + 2;
+  while (start < headerEnd) {
+    const end = response.indexOf("\r\n", start);
+    if (end === -1 || end > headerEnd) return false;
+    const colon = start + name.length;
+    if (
+      response.charCodeAt(colon) === 58 &&
+      response.slice(start, colon).toLowerCase() === name
+    ) {
+      const semicolon = response.indexOf(";", colon + 1);
+      const valueEnd = semicolon !== -1 && semicolon < end ? semicolon : end;
+      const mime = response
+        .slice(colon + 1, valueEnd)
+        .trim()
+        .toLowerCase();
+      return mime === "text/javascript" || mime === "application/javascript";
+    }
+    start = end + 2;
+  }
+  return false;
+};
+
+export const classifyAssetPath = (
+  path: string,
+  isJavaScript = false,
+): AssetKind | undefined => {
   const clean = path.split(/[?#]/, 1)[0]?.toLowerCase() ?? "";
   if (clean.endsWith(".map")) return "map";
   if (clean.endsWith(".js") || clean.endsWith(".mjs")) return "bundle";
-  return undefined;
+  return isJavaScript ? "bundle" : undefined;
 };
 
 export const groupAssetsByHost = (
@@ -70,7 +104,7 @@ export const groupAssetsByHost = (
 
   for (const request of requests) {
     if (request.statusCode !== undefined && request.statusCode >= 400) continue;
-    const kind = classifyAssetPath(request.path);
+    const kind = classifyAssetPath(request.path, request.isJavaScript);
     if (kind === undefined) continue;
     const host = request.host.trim().toLowerCase();
     if (host.length === 0) continue;

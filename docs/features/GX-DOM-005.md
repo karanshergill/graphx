@@ -24,12 +24,17 @@ host without leaving Caido.
     (block/login/fallback pages). `resp.raw.cont/ncont` search the
     stored raw response case-insensitively; `resp.header.*`, `resp.length.*`,
     `resp.path.regex`, `not`, and `!` do not exist in this HTTPQL version.
-- One paginated sweep (`first: 500`, cursor pagination, **uncapped**; a
-  cursor-stagnation guard stops and flags pathological loops), newest-first
-  (`order: CREATED_AT DESC` — so `lastStatus` is genuinely latest and any
-  truncation cuts oldest history), `truncated: true` surfaced when it happens,
-  with filter `(req.path.like:"%.js" or req.path.like:"%.mjs" or req.path.like:"%.map") and resp.code.lt:400 and resp.raw.ncont:"ontent-Type: text/html"`,
-  grouped by host client-side. No per-host count fan-out.
+- One paginated sweep (`first: 500`, cursor pagination, at most 100,000
+  candidates; a cursor-stagnation guard stops and flags pathological loops),
+  newest-first (`order: CREATED_AT DESC`); `truncated` signals a limit or
+  pagination stall. `JS_ASSETS_HTTPQL` matches `.js`, `.mjs`, `.map`, or
+  captured `text/javascript`/`application/javascript` MIME text, with the
+  existing status and HTML guards. HTTPQL searches response bodies too, so
+  paths without those suffixes require a second check of the actual captured
+  `Content-Type` header before being grouped. Only those candidates need
+  local raw-response reads (at most 16 in parallel); the frontend SDK
+  returns decoded HTTP text, whereas backend GraphQL returns base64 HTTP.
+  No per-host count fan-out or target requests.
 - A `requestCount` probe on the same filter returns a `snapshot` token; the
   full sweep only re-runs when the token changes (checked on each manual
   graph sync).
@@ -39,9 +44,12 @@ host without leaving Caido.
 
 ## Semantics
 
-- A **bundle** is an observed request path ending `.js` or `.mjs`; a **map**
-  ends `.map` (so `.js.map` counts as a map, never a bundle). Matching is
-  case-insensitive and ignores query strings. `.json` never matches.
+- A **bundle** has an observed `.js`/`.mjs` path or a captured response with
+  `text/javascript`/`application/javascript` in its actual `Content-Type`
+  header, even at an extensionless path. A **map** ends `.map` (so `.js.map`
+  counts as a map, never a bundle). Path suffix matching is case-insensitive
+  and ignores query strings; `.json` without a JavaScript MIME header does
+  not match. A MIME-looking string in the response body is never sufficient.
 - Bundles are deduped by path per host with a request count and the latest
   observed response status. `hasMap` pairs a bundle with an observed
   `<path>.map` request on the same host — no probing, no target traffic.
@@ -63,10 +71,11 @@ host without leaving Caido.
 | --- | --- | --- | --- |
 | GX-DOM-501 | Read JS/map requests from the local project only; zero target traffic. | `assets/caidoRequests.ts` (read-only `requests`/`requestCount`) | Live HTTPQL validation log; no egress in harness run. |
 | GX-DOM-502 | One paginated sweep grouped by host; snapshot-token staleness guard. | `caidoRequests.ts`, `useDomainAssets.ts` | Typecheck; harness run with mocked SDK. |
-| GX-DOM-503 | Correct bundle/map classification incl. `.js.map` and `.json` exclusion. | `assets/domainAssets.ts` | `domainAssets.test.ts` (5 tests). |
+| GX-DOM-503 | Correct bundle/map classification incl. `.js.map` priority and non-JS exclusion. | `shared/src/domainGraph/assets.ts` | `assets.test.ts` covers suffix fallback, MIME-confirmed paths, map priority, and body-only MIME decoys. |
 | GX-DOM-504 | Toggle mutes JS-less hosts and suffixes counts, on both renderers. | sigma `nodeReducer`, canvas `draw()` | Harness screenshot diff; installed UI inspection. |
 | GX-DOM-505 | Per-host bundle list with map badge, status, copy URLs. | `DomainGraphPage` selection panel | Harness DOM assertions; installed UI inspection. |
 | GX-DOM-506 | Lifecycle: reload on scope change and manual graph sync; release on exit. | `useDomainAssets` | Deferred snapshot/sweep tests cover scope switches, manual sync, and page re-entry; installed UI navigation smoke. |
+| GX-DOM-507 | Show captured JavaScript at extensionless paths without target refetches. | `JS_ASSETS_HTTPQL`, `caidoRequests.ts`, `agentapi/query.ts` | Decoded-raw frontend regression; Caido 0.59 asset API and UI displayed `/assets/entry` paired with `/assets/entry.map`, excluding text/plain `/assets/decoy`. |
 
 ## Not part of this increment
 
