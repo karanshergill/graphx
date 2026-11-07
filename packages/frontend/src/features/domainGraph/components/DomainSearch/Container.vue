@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 
 import { rankDomainMatches } from "../../search";
 
@@ -12,12 +12,20 @@ const query = ref("");
 const open = ref(false);
 const highlighted = ref(0);
 const input = ref<HTMLInputElement>();
+const results = ref<HTMLUListElement>();
 
 const matches = computed(() => rankDomainMatches(hostnames, query.value));
 
 watch(query, (value) => {
   highlighted.value = 0;
   open.value = value.trim().length > 0;
+});
+
+watch(highlighted, async () => {
+  await nextTick();
+  results.value?.children
+    .item(highlighted.value)
+    ?.scrollIntoView({ block: "nearest" });
 });
 
 const pick = (hostname: string): void => {
@@ -84,12 +92,14 @@ defineExpose({
       type="button"
       class="graphx-search-clear"
       aria-label="Clear search"
-      @mousedown.prevent="clear"
+      @mousedown.prevent
+      @click="clear"
     >
       <i class="fas fa-times" aria-hidden="true" />
     </button>
     <ul
       v-if="open && matches.length > 0"
+      ref="results"
       class="graphx-search-results"
       role="listbox"
       aria-label="Matching domains"

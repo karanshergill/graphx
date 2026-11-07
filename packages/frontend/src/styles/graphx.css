@@ -231,6 +231,7 @@
   border-radius: 0.35rem;
   color: var(--p-text-color);
   cursor: pointer;
+  flex-shrink: 0;
   font-size: 0.78rem;
   overflow: hidden;
   padding: 0.4rem 0.55rem;
