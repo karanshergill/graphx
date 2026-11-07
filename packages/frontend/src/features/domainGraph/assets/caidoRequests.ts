@@ -14,6 +14,7 @@ const RAW_FETCH_CONCURRENCY = 16;
 
 type AssetEdge = {
   node: {
+    id: string;
     host: string;
     path: string;
     query: string;
@@ -47,6 +48,7 @@ const readAssetEdge = async (
   const request: ObservedAssetRequest = {
     host: node.host,
     path: node.path,
+    requestId: node.id,
     query: node.query,
     isTls: node.isTls,
     port: node.port,

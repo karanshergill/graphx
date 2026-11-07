@@ -132,6 +132,12 @@ const selectedHostAssets = computed(() => {
   if (hostname === undefined) return undefined;
   return assetsByHost.value.get(hostname);
 });
+const BUNDLE_PAGE_SIZE = 50;
+const bundlePage = ref(0);
+const bundlePageStart = computed(() => bundlePage.value * BUNDLE_PAGE_SIZE);
+watch([selectedHostname, selectedScopeId, selectedHostAssets], () => {
+  bundlePage.value = 0;
+});
 
 const copyAssetUrls = (): void => {
   const assets = selectedHostAssets.value;
@@ -594,29 +600,103 @@ const copyReconEndpoints = (): void => {
             <p v-if="assetsTruncated" class="graphx-assets-more">
               Asset sweep truncated — data may be incomplete.
             </p>
-            <ul>
+            <ul :key="bundlePage">
               <li
-                v-for="bundle in selectedHostAssets.bundles.slice(0, 50)"
+                v-for="bundle in selectedHostAssets.bundles.slice(
+                  bundlePageStart,
+                  bundlePageStart + BUNDLE_PAGE_SIZE,
+                )"
                 :key="bundle.path"
               >
-                <code>{{ bundle.path }}</code>
-                <span class="graphx-asset-meta"
-                  >×{{ bundle.requestCount
-                  }}<template v-if="bundle.lastStatus !== undefined">
-                    · {{ bundle.lastStatus }}</template
-                  ><template v-if="bundle.lastSeen">
-                    · {{ bundle.lastSeen.slice(0, 10) }}</template
-                  ></span
-                >
-                <span v-if="bundle.hasMap" class="graphx-asset-map">map</span>
+                <details class="graphx-asset-details">
+                  <summary>
+                    <span class="graphx-asset-row">
+                      <code>{{ bundle.path }}</code>
+                      <span class="graphx-asset-meta"
+                        >×{{ bundle.requestCount
+                        }}<template v-if="bundle.lastStatus !== undefined">
+                          · {{ bundle.lastStatus }}</template
+                        ><template v-if="bundle.lastSeen">
+                          · {{ bundle.lastSeen.slice(0, 10) }}</template
+                        ><template v-if="bundle.urls.length > 1">
+                          · {{ bundle.urls.length }} URLs</template
+                        ></span
+                      >
+                      <span v-if="bundle.hasMap" class="graphx-asset-map"
+                        >map</span
+                      >
+                    </span>
+                  </summary>
+                  <ul
+                    v-if="bundle.urls.length > 0"
+                    class="graphx-asset-variants"
+                  >
+                    <li v-for="url in bundle.urls" :key="url">
+                      <code :title="url">{{ url }}</code>
+                      <div
+                        v-if="bundle.requestIdsByUrl[url] !== undefined"
+                        class="graphx-evidence-actions"
+                      >
+                        <button
+                          type="button"
+                          @click="openInHistory(bundle.requestIdsByUrl[url])"
+                        >
+                          History
+                        </button>
+                        <button
+                          type="button"
+                          @click="openInReplay(bundle.requestIdsByUrl[url])"
+                        >
+                          Replay
+                        </button>
+                      </div>
+                    </li>
+                  </ul>
+                  <p v-else class="graphx-assets-more">
+                    Captured URL unavailable
+                  </p>
+                </details>
               </li>
             </ul>
-            <p
-              v-if="selectedHostAssets.bundleCount > 50"
-              class="graphx-assets-more"
+            <div
+              v-if="selectedHostAssets.bundleCount > BUNDLE_PAGE_SIZE"
+              class="graphx-asset-pager"
             >
-              + {{ selectedHostAssets.bundleCount - 50 }} more
-            </p>
+              <button
+                v-if="bundlePage > 0"
+                type="button"
+                @click="bundlePage -= 1"
+              >
+                Previous {{ BUNDLE_PAGE_SIZE }}
+              </button>
+              <span
+                >{{ bundlePageStart + 1 }}–{{
+                  Math.min(
+                    bundlePageStart + BUNDLE_PAGE_SIZE,
+                    selectedHostAssets.bundleCount,
+                  )
+                }}
+                of {{ selectedHostAssets.bundleCount }}</span
+              >
+              <button
+                v-if="
+                  bundlePageStart + BUNDLE_PAGE_SIZE <
+                  selectedHostAssets.bundleCount
+                "
+                type="button"
+                @click="bundlePage += 1"
+              >
+                Show next
+                {{
+                  Math.min(
+                    BUNDLE_PAGE_SIZE,
+                    selectedHostAssets.bundleCount -
+                      bundlePageStart -
+                      BUNDLE_PAGE_SIZE,
+                  )
+                }}
+              </button>
+            </div>
           </div>
           <div class="graphx-assets graphx-recon">
             <div class="graphx-assets-header">

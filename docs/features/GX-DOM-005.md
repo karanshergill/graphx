@@ -60,11 +60,19 @@ host without leaving Caido.
   the two compose into a single emphasis mode: marked hosts and JS hosts stay
   prominent (with count suffixes), everything else fades, and the Marked-only
   hard filter is not applied.
-- Selecting a host lists up to 50 bundles (path, request count, last status,
-  `map` badge) in the selection panel. **Copy URLs** writes every distinct
-  captured bundle URL for that host, including bundles past the display limit,
+- Selecting a host lists bundles (path, request count, last status, `map`
+  badge) 50 at a time in the selection panel. **Show next** and **Previous**
+  page through every discovered bundle without extra requests; changing the
+  host, scope, or asset sweep resets the view to the first page. **Copy URLs**
+  writes every distinct captured bundle URL for that host across all pages,
   with its HTTP(S) scheme, non-default port, and query string intact. It never
   invents an HTTPS URL when the captured origin is unavailable.
+- Expand a bundle to see each captured URL separately. **History** locates
+  that URL's captured request row in Caido; select the row to inspect its
+  request and response. **Replay** opens an unsent draft of that request.
+  If a URL was revalidated with `304`, its most recent `2xx` capture is
+  preferred for the pivot so the earlier response body remains available.
+  Captures without a known URL have no History or Replay pivot.
 - Structural parents simply have no assets and render as before.
 
 ## Requirements ledger
@@ -79,9 +87,10 @@ host without leaving Caido.
 | GX-DOM-506 | Lifecycle: reload on scope change and manual graph sync; release on exit. | `useDomainAssets` | Deferred snapshot/sweep tests cover scope switches, manual sync, and page re-entry; installed UI navigation smoke. |
 | GX-DOM-507 | Show captured JavaScript at extensionless paths without target refetches. | `JS_ASSETS_HTTPQL`, `caidoRequests.ts`, `agentapi/query.ts` | Decoded-raw frontend regression; Caido 0.59 asset API and UI displayed `/assets/entry` paired with `/assets/entry.map`, excluding text/plain `/assets/decoy`. |
 | GX-DOM-508 | Copy actual captured JS asset URLs without losing HTTP scheme, non-default ports, or query variants. | `shared/src/domainGraph/assets.ts`, `caidoRequests.ts`, `agentapi/query.ts`, `DomainGraphPage` | `assets.test.ts` covers distinct origins and queries; installed Caido 0.59 `/assets?scope=1` and UI clipboard both returned `http://localhost:4177/assets/entry?build=2` and `http://localhost:4178/assets/entry?build=3` from one bundle row. |
+| GX-DOM-509 | Open a specific captured JS URL in History or as an unsent Replay draft, preferring a successful capture over `304` revalidation. | `assets.ts`, `caidoRequests.ts`, `agentapi/query.ts`, `DomainGraphPage` | `assets.test.ts` verifies per-URL request IDs and revalidation preference; isolated Caido 0.59 API mapped `build=one` to the `200` capture rather than newer `304`, History located its row, and Replay opened the `build=two` request without sending. |
+| GX-DOM-510 | Browse all discovered bundles without rendering the entire host at once. | `DomainGraphPage` selection panel and `graphx.css` | Isolated Caido 0.59 with 103 captured `.js` files showed 1–50, 51–100, and 101–103; Previous returned to page two, host deselection/reselection reset to page one, and the final bundle retained History/Replay actions. |
 
 ## Not part of this increment
 
 - Probing for unrequested `.map` files (generates target traffic); added separately for on-demand JS recon in GX-DOM-010.
 - Response-body `sourceMappingURL` analysis (request meta carries no body); added separately in GX-DOM-010.
-- Drill-down into HTTP History from an asset row.

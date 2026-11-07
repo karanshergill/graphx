@@ -1,6 +1,7 @@
 export type ObservedAssetRequest = {
   host: string;
   path: string;
+  requestId?: string;
   query?: string;
   isTls?: boolean;
   port?: number;
@@ -12,9 +13,24 @@ export type ObservedAssetRequest = {
 type BundleAsset = {
   path: string;
   urls: readonly string[];
+  requestIdsByUrl: Readonly<Record<string, string>>;
   requestCount: number;
   lastStatus?: number;
   hasMap: boolean;
+  firstSeen?: string;
+  lastSeen?: string;
+};
+
+type AssetCapture = {
+  requestId: string;
+  seenAt: string | undefined;
+  hasSuccessfulResponse: boolean;
+};
+
+type BundleEntry = {
+  urls: Map<string, AssetCapture | undefined>;
+  requestCount: number;
+  lastStatus?: number;
   firstSeen?: string;
   lastSeen?: string;
 };
@@ -91,19 +107,7 @@ export const classifyAssetPath = (
 export const groupAssetsByHost = (
   requests: ObservedAssetRequest[],
 ): Map<string, HostAssets> => {
-  const bundlesByHost = new Map<
-    string,
-    Map<
-      string,
-      {
-        urls: Set<string>;
-        requestCount: number;
-        lastStatus?: number;
-        firstSeen?: string;
-        lastSeen?: string;
-      }
-    >
-  >();
+  const bundlesByHost = new Map<string, Map<string, BundleEntry>>();
   const mapsByHost = new Map<string, Set<string>>();
   const mapLastSeenByHost = new Map<string, string>();
 
@@ -127,9 +131,9 @@ export const groupAssetsByHost = (
       continue;
     }
 
-    const bundles = bundlesByHost.get(host) ?? new Map();
+    const bundles = bundlesByHost.get(host) ?? new Map<string, BundleEntry>();
     const existing = bundles.get(path);
-    const urls = existing?.urls ?? new Set<string>();
+    const urls = existing?.urls ?? new Map<string, AssetCapture | undefined>();
     if (request.isTls !== undefined && request.port !== undefined) {
       const scheme = request.isTls ? "https" : "http";
       const port =
@@ -138,7 +142,29 @@ export const groupAssetsByHost = (
         request.query === undefined || request.query === ""
           ? ""
           : `?${request.query}`;
-      urls.add(`${scheme}://${host}${port}${request.path}${query}`);
+      const url = `${scheme}://${host}${port}${request.path}${query}`;
+      const current = urls.get(url);
+      if (request.requestId === undefined) {
+        if (current === undefined) urls.set(url, undefined);
+      } else {
+        const hasSuccessfulResponse =
+          request.statusCode !== undefined &&
+          request.statusCode >= 200 &&
+          request.statusCode < 300;
+        if (
+          current === undefined ||
+          (hasSuccessfulResponse && !current.hasSuccessfulResponse) ||
+          (hasSuccessfulResponse === current.hasSuccessfulResponse &&
+            request.seenAt !== undefined &&
+            (current.seenAt === undefined || request.seenAt > current.seenAt))
+        ) {
+          urls.set(url, {
+            requestId: request.requestId,
+            seenAt: request.seenAt,
+            hasSuccessfulResponse,
+          });
+        }
+      }
     }
     const entry = {
       requestCount: (existing?.requestCount ?? 0) + 1,
@@ -163,10 +189,15 @@ export const groupAssetsByHost = (
     const mapPaths = mapsByHost.get(host) ?? new Set<string>();
     const bundles = [...(bundlesByHost.get(host)?.entries() ?? [])]
       .map(([path, entry]): BundleAsset => {
+        const requestIdsByUrl: Record<string, string> = {};
+        for (const [url, captured] of entry.urls) {
+          if (captured !== undefined) requestIdsByUrl[url] = captured.requestId;
+        }
         const asset: BundleAsset = {
           path,
           requestCount: entry.requestCount,
-          urls: [...entry.urls].sort(),
+          urls: [...entry.urls.keys()].sort(),
+          requestIdsByUrl,
           hasMap: mapPaths.has(`${path}.map`),
         };
         if (entry.lastStatus !== undefined) asset.lastStatus = entry.lastStatus;

@@ -143,6 +143,57 @@ describe("groupAssetsByHost", () => {
     ).toEqual([]);
   });
 
+  it("links each URL to a successful capture instead of a revalidation", () => {
+    const host = groupAssetsByHost([
+      {
+        host: "app.example.com",
+        path: "/bundle.js",
+        query: "v=1",
+        isTls: false,
+        port: 4177,
+        requestId: "earlier-body",
+        statusCode: 200,
+        seenAt: "2026-11-07T10:00:00Z",
+      },
+      {
+        host: "app.example.com",
+        path: "/bundle.js",
+        query: "v=1",
+        isTls: false,
+        port: 4177,
+        requestId: "latest-revalidation",
+        statusCode: 304,
+        seenAt: "2026-11-07T12:00:00Z",
+      },
+      {
+        host: "app.example.com",
+        path: "/bundle.js",
+        query: "v=2",
+        isTls: false,
+        port: 4177,
+        requestId: "second-variant",
+        statusCode: 200,
+        seenAt: "2026-11-07T11:00:00Z",
+      },
+      {
+        host: "app.example.com",
+        path: "/bundle.js",
+        query: "v=1",
+        isTls: false,
+        port: 4177,
+        requestId: "newer-body",
+        statusCode: 200,
+        seenAt: "2026-11-07T11:30:00Z",
+      },
+      { host: "app.example.com", path: "/unknown.js", requestId: "unknown" },
+    ]).get("app.example.com");
+    expect(host?.bundles[0]?.requestIdsByUrl).toEqual({
+      "http://app.example.com:4177/bundle.js?v=1": "newer-body",
+      "http://app.example.com:4177/bundle.js?v=2": "second-variant",
+    });
+    expect(host?.bundles[1]?.requestIdsByUrl).toEqual({});
+  });
+
   it("groups, dedupes, counts, and pairs maps", () => {
     const grouped = groupAssetsByHost(requests);
     const app = grouped.get("app.example.com");

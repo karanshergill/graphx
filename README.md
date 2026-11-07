@@ -47,6 +47,15 @@ In the per-host JS asset panel, **Copy URLs** copies each distinct captured
 bundle URL with its scheme, non-default port, and query string; different
 captures of the same path remain separate URLs. No HTTPS origin is assumed.
 
+The JS asset list shows 50 bundles per page. **Show next** and **Previous**
+reach every discovered bundle without rendering them all at once. **Copy URLs**
+still includes bundles on every page.
+
+Expand a JS bundle to see its captured URL variants. **History** locates the
+specific request row in Caido (select it to inspect its response); **Replay**
+opens an unsent draft. If a URL has a newer `304` revalidation, the pivot
+prefers an earlier successful response.
+
 **Copy endpoints** preserves each captured asset's scheme and port; the same
 relative path can yield multiple distinct URLs. Leads with no known origin
 remain relative rather than being rewritten to HTTPS.

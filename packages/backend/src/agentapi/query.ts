@@ -167,6 +167,7 @@ const readAssetEdge = async (
   const request: ObservedAssetRequest = {
     host: node.host,
     path: node.path,
+    requestId: node.id,
     query: node.query,
     isTls: node.isTls,
     port: node.port,
