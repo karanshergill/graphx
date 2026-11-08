@@ -15,6 +15,14 @@ GraphX is a native Caido extension for exploring relationships in project data. 
 - **Agent API** — GET + JSON on `127.0.0.1:8771` so automation can query the estate model.
 - **On-demand JS recon** — passively scans all observed JavaScript bodies and source maps, retaining a source location for each lead; explicitly opting in for one scan attempts every missing in-scope referenced map by default, with rate control and an optional request cap.
 
+## Proposed capabilities
+
+The [client-side input discovery proposal](docs/features/GX-DOM-011.md)
+defines an input-evidence explorer for undocumented, hidden, potentially
+forgotten, and potentially redundant inputs. It covers source/capture
+correlation, optional JXSCOUT data reuse, UI/runtime observations, historical
+comparisons, and explicit coverage limits. **This is proposed, not implemented.**
+
 ## Current behavior
 
 - Reads domain roots from Caido's local Sitemap API for the selected scope.
@@ -38,6 +46,9 @@ GraphX is a native Caido extension for exploring relationships in project data. 
 An “observed host” means a domain root exists in the Caido Sitemap. A “structural parent” is an in-scope suffix derived only to preserve the relationship chain. Neither state currently means DNS-resolved or DNS-unresolved.
 
 ## Use in Caido
+
+For repeatable workstation or Linux VPS installation alongside JXSCOUT Pro V2,
+see the [setup and migration guide](docs/jxscout-setup.md).
 
 Install `dist/plugin_package.zip` from Caido's Plugins page, then select **GraphX** in the sidebar and choose a program scope. The graph always displays the complete scope at every depth. Use the toolbar search box (`/` or `Ctrl/Cmd+K`) to find any domain and jump to it. Drag nodes to pin the working layout, pan or zoom the canvas, and select a node to isolate its immediate neighborhood. Right-click the selected node (or press `M`; `Shift+M` includes its subdomains) to mark it — marks persist across restarts within the current project. The bookmark toolbar toggle shows only marked domains and their parent chains; the route toggle highlights the full connection path between marked domains; the file-code toggle fades hosts without observed JavaScript bundles and combines with the bookmark toggle into a joint emphasis. The graph is keyboard-focusable: use the arrow keys, Home/End, Escape, and `0` (fit view).
 
